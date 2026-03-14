@@ -1,0 +1,715 @@
+// This is the Prisma schema for Reply Botz Helpdesk
+// AI-first helpdesk for EdTech platforms with FERPA compliance
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, uuidOssp(map: "uuid-ossp"), vector]
+}
+
+// =====================================================
+// ORGANIZATIONS (Multi-tenancy)
+// =====================================================
+
+model Organization {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String           @db.VarChar(255)
+  slug      String           @unique @db.VarChar(100)
+  plan      OrganizationPlan @default(FREE)
+  settings  Json             @default("{}")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  users                     User[]
+  customers                 Customer[]
+  lmsIntegrations           LmsIntegration[]
+  contentModerationPolicies ContentModerationPolicy[]
+  ferpaConsents             FerpaConsent[]
+  ferpaDataRequests         FerpaDataRequest[]
+  ticketCategories          TicketCategory[]
+  kbCategories              KbCategory[]
+
+  @@map("organizations")
+}
+
+// =====================================================
+// USERS (Staff: Agents, Admins, Teachers, etc.)
+// =====================================================
+
+model User {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  email          String   @db.VarChar(255) // stored encrypted via application layer
+  name           String   @db.VarChar(255) // stored encrypted via application layer
+  role           UserRole @default(AGENT)
+  passwordHash   String?  @map("password_hash") @db.Text
+  mfaEnabled     Boolean  @default(false) @map("mfa_enabled")
+  mfaSecret      String?  @map("mfa_secret") @db.Text // encrypted
+  avatarUrl      String?  @map("avatar_url") @db.VarChar(500)
+  lmsUserId      String?  @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform    String?  @map("lms_platform") @db.VarChar(50)
+  isActive       Boolean  @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at") @db.Timestamptz()
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens   RefreshToken[]
+  assignedConversations Conversation[]
+  assignedTickets Ticket[]
+  createdKbArticles KbArticle[] @relation("KbArticleCreatedBy")
+  reviewedKbArticles KbArticle[] @relation("KbArticleReviewedBy")
+  ferpaAuditLogs  FerpaAuditLog[]
+  handoffsTo      Handoff[]
+  escalatedModerationLogs ContentModerationLog[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId, role])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @map("token_hash") @db.Text // hashed with argon2
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz()
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz()
+  ipAddress   String?   @map("ip_address") @db.VarChar(45)
+  userAgent   String?   @map("user_agent") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// =====================================================
+// CUSTOMERS (End users: students, parents, teachers)
+// =====================================================
+
+model Customer {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  email          String?   @db.VarChar(255) // encrypted
+  name           String?   @db.VarChar(255) // encrypted
+  phone          String?   @db.VarChar(30)  // encrypted
+  lmsUserId      String?   @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform    String?   @map("lms_platform") @db.VarChar(50)
+  role           UserRole?
+  metadata       Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  tickets       Ticket[]
+  voiceCalls    VoiceCall[]
+
+  @@index([organizationId])
+  @@index([lmsUserId, lmsPlatform])
+  @@map("customers")
+}
+
+// =====================================================
+// CONVERSATIONS (AI Chat)
+// =====================================================
+
+model Conversation {
+  id                        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId                String?            @map("customer_id") @db.Uuid
+  organizationId            String             @map("organization_id") @db.Uuid
+  lmsUserId                 String?            @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform               String?            @map("lms_platform") @db.VarChar(50)
+  lmsCourseId               String?            @map("lms_course_id") @db.VarChar(255)
+  lmsAssignmentId           String?            @map("lms_assignment_id") @db.VarChar(255)
+  userRole                  UserRole?          @map("user_role")
+  channel                   ConversationChannel
+  status                    ConversationStatus @default(ACTIVE)
+  assignedAgentId           String?            @map("assigned_agent_id") @db.Uuid
+  aiModelConfig             Json?              @map("ai_model_config")
+  contentModerationEnabled  Boolean            @default(true) @map("content_moderation_enabled")
+  metadata                  Json               @default("{}")
+  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  assignedAgent User?     @relation(fields: [assignedAgentId], references: [id])
+  messages      Message[]
+  handoffs      Handoff[]
+  voiceCalls    VoiceCall[]
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([assignedAgentId])
+  @@index([lmsUserId, lmsPlatform])
+  @@map("conversations")
+}
+
+model Message {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId   String             @map("conversation_id") @db.Uuid
+  senderType       MessageSenderType  @map("sender_type")
+  senderId         String?            @map("sender_id") @db.Uuid
+  content          String             @db.Text
+  contentType      MessageContentType @default(TEXT) @map("content_type")
+  moderationStatus ModerationStatus?  @map("moderation_status")
+  moderationFlags  Json?              @map("moderation_flags")
+  ferpaAuditLogged Boolean            @default(false) @map("ferpa_audit_logged")
+  metadata         Json               @default("{}")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+
+  conversation    Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  moderationLogs  ContentModerationLog[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderType, senderId])
+  @@map("messages")
+}
+
+model ContentModerationLog {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId           String?   @map("message_id") @db.Uuid
+  conversationId      String?   @map("conversation_id") @db.Uuid
+  moderationResult    Json      @map("moderation_result")
+  actionTaken         String    @map("action_taken") @db.VarChar(50)
+  escalatedToAgentId  String?   @map("escalated_to_agent_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  message           Message? @relation(fields: [messageId], references: [id])
+  escalatedToAgent  User?    @relation(fields: [escalatedToAgentId], references: [id])
+
+  @@index([conversationId])
+  @@index([messageId])
+  @@map("content_moderation_logs")
+}
+
+// =====================================================
+// TICKETS (Email / Support)
+// =====================================================
+
+model TicketCategory {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(255)
+  description    String? @db.Text
+  color          String? @db.VarChar(7)
+  parentId       String? @map("parent_id") @db.Uuid
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tickets      Ticket[]
+  parent       TicketCategory?  @relation("TicketCategoryHierarchy", fields: [parentId], references: [id])
+  children     TicketCategory[] @relation("TicketCategoryHierarchy")
+
+  @@map("ticket_categories")
+}
+
+model Ticket {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subject             String         @db.VarChar(500)
+  description         String?        @db.Text
+  customerId          String?        @map("customer_id") @db.Uuid
+  organizationId      String         @map("organization_id") @db.Uuid
+  lmsUserId           String?        @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform         String?        @map("lms_platform") @db.VarChar(50)
+  lmsCourseId         String?        @map("lms_course_id") @db.VarChar(255)
+  lmsAssignmentId     String?        @map("lms_assignment_id") @db.VarChar(255)
+  userRole            UserRole?      @map("user_role")
+  status              TicketStatus   @default(OPEN)
+  priority            TicketPriority @default(NORMAL)
+  categoryId          String?        @map("category_id") @db.Uuid
+  assignedAgentId     String?        @map("assigned_agent_id") @db.Uuid
+  aiClassification    Json?          @map("ai_classification")
+  aiSuggestedResponse String?        @map("ai_suggested_response") @db.Text
+  aiConfidenceScore   Decimal?       @map("ai_confidence_score") @db.Decimal(3, 2)
+  slaDeadline         DateTime?      @map("sla_deadline") @db.Timestamptz()
+  source              TicketSource   @default(EMAIL)
+  externalRefs        Json?          @map("external_refs")
+  ferpaEncryptedData  Bytes?         @map("ferpa_encrypted_data")
+  ferpaAuditLogged    Boolean        @default(false) @map("ferpa_audit_logged")
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  resolvedAt          DateTime?      @map("resolved_at") @db.Timestamptz()
+  closedAt            DateTime?      @map("closed_at") @db.Timestamptz()
+
+  customer       Customer?       @relation(fields: [customerId], references: [id])
+  assignedAgent  User?           @relation(fields: [assignedAgentId], references: [id])
+  category       TicketCategory? @relation(fields: [categoryId], references: [id])
+  events         TicketEvent[]
+  kbArticles     KbArticle[]     @relation("TicketKbArticle")
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([assignedAgentId])
+  @@index([lmsUserId, lmsPlatform])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model TicketEvent {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId         String    @map("ticket_id") @db.Uuid
+  eventType        String    @map("event_type") @db.VarChar(50)
+  actorType        String?   @map("actor_type") @db.VarChar(20)
+  actorId          String?   @map("actor_id") @db.Uuid
+  content          String?   @db.Text
+  ferpaAuditLogged Boolean   @default(false) @map("ferpa_audit_logged")
+  metadata         Json      @default("{}")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_events")
+}
+
+// =====================================================
+// FERPA COMPLIANCE (Immutable Audit Log)
+// =====================================================
+
+model FerpaAuditLog {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resourceType String    @map("resource_type") @db.VarChar(50)
+  resourceId   String?   @map("resource_id") @db.Uuid
+  action       String    @db.VarChar(50)
+  actorId      String?   @map("actor_id") @db.Uuid
+  actorRole    UserRole? @map("actor_role")
+  studentId    String?   @map("student_id") @db.VarChar(255) // encrypted
+  timestamp    DateTime  @default(now()) @db.Timestamptz()
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  userAgent    String?   @map("user_agent") @db.Text
+  metadata     Json?
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([studentId])
+  @@index([timestamp])
+  @@map("ferpa_audit_log")
+}
+
+model FerpaConsent {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId      String    @map("student_id") @db.VarChar(255) // encrypted
+  parentId       String?   @map("parent_id") @db.VarChar(255) // encrypted
+  organizationId String    @map("organization_id") @db.Uuid
+  consentType    String    @map("consent_type") @db.VarChar(50)
+  consentGiven   Boolean   @map("consent_given")
+  consentDate    DateTime? @map("consent_date") @db.Timestamptz()
+  consentMethod  String?   @map("consent_method") @db.VarChar(50)
+  metadata       Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, studentId])
+  @@map("ferpa_consents")
+}
+
+model FerpaDataRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId       String    @map("student_id") @db.VarChar(255) // encrypted
+  organizationId  String    @map("organization_id") @db.Uuid
+  requestType     String    @map("request_type") @db.VarChar(50)
+  status          String    @default("pending") @db.VarChar(30)
+  requestedAt     DateTime  @default(now()) @map("requested_at") @db.Timestamptz()
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz()
+  exportedDataUrl String?   @map("exported_data_url") @db.Text
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, studentId])
+  @@map("ferpa_data_requests")
+}
+
+// =====================================================
+// KNOWLEDGE BASE
+// =====================================================
+
+model KbCategory {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(255)
+  description    String? @db.Text
+  slug           String  @db.VarChar(100)
+  parentId       String? @map("parent_id") @db.Uuid
+  lmsPlatform    String? @map("lms_platform") @db.VarChar(50)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  articles     KbArticle[]
+  parent       KbCategory?  @relation("KbCategoryHierarchy", fields: [parentId], references: [id])
+  children     KbCategory[] @relation("KbCategoryHierarchy")
+
+  @@unique([organizationId, slug])
+  @@map("kb_categories")
+}
+
+model KbArticle {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  title           String          @db.VarChar(500)
+  content         String          @db.Text
+  summary         String?         @db.Text
+  categoryId      String?         @map("category_id") @db.Uuid
+  status          KbArticleStatus @default(DRAFT)
+  source          KbArticleSource @default(MANUAL)
+  sourceTicketId  String?         @map("source_ticket_id") @db.Uuid
+  lmsPlatform     String?         @map("lms_platform") @db.VarChar(50)
+  targetRole      UserRole?       @map("target_role")
+  createdBy       String?         @map("created_by") @db.Uuid
+  reviewedBy      String?         @map("reviewed_by") @db.Uuid
+  viewCount       Int             @default(0) @map("view_count")
+  helpfulCount    Int             @default(0) @map("helpful_count")
+  notHelpfulCount Int             @default(0) @map("not_helpful_count")
+  tags            String[]
+  version         Int             @default(1)
+  metadata        Json            @default("{}")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  publishedAt     DateTime?       @map("published_at") @db.Timestamptz()
+
+  category       KbCategory? @relation(fields: [categoryId], references: [id])
+  creator        User?       @relation("KbArticleCreatedBy", fields: [createdBy], references: [id])
+  reviewer       User?       @relation("KbArticleReviewedBy", fields: [reviewedBy], references: [id])
+  sourceTicket   Ticket?     @relation("TicketKbArticle", fields: [sourceTicketId], references: [id])
+  embeddings     KbEmbedding[]
+
+  @@index([organizationId, status])
+  @@index([lmsPlatform, targetRole])
+  @@map("kb_articles")
+}
+
+model KbEmbedding {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  chunkIndex  Int      @map("chunk_index")
+  chunkText   String   @map("chunk_text") @db.Text
+  targetRole  UserRole? @map("target_role")
+  lmsPlatform String?  @map("lms_platform") @db.VarChar(50)
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Note: The actual vector embedding is stored in Qdrant, not Postgres.
+  // This table stores chunk metadata for joining back to articles.
+  article KbArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@map("kb_embeddings")
+}
+
+// =====================================================
+// LMS INTEGRATIONS
+// =====================================================
+
+model LmsIntegration {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String         @map("organization_id") @db.Uuid
+  lmsPlatform     String         @map("lms_platform") @db.VarChar(50)
+  lmsInstanceUrl  String?        @map("lms_instance_url") @db.VarChar(500)
+  authMethod      String         @map("auth_method") @db.VarChar(30)
+  accessToken     String?        @map("access_token") @db.Text   // encrypted
+  refreshToken    String?        @map("refresh_token") @db.Text  // encrypted
+  apiKey          String?        @map("api_key") @db.Text        // encrypted
+  tokenExpiresAt  DateTime?      @map("token_expires_at") @db.Timestamptz()
+  syncEnabled     Boolean        @default(true) @map("sync_enabled")
+  lastSyncAt      DateTime?      @map("last_sync_at") @db.Timestamptz()
+  syncFrequency   String         @default("hourly") @map("sync_frequency") @db.VarChar(30)
+  webhookEnabled  Boolean        @default(true) @map("webhook_enabled")
+  webhookSecret   String?        @map("webhook_secret") @db.Text // encrypted
+  metadata        Json           @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lmsUsers     LmsUser[]
+  lmsCourses   LmsCourse[]
+  lmsAssignments LmsAssignment[]
+  lmsSyncLogs  LmsSyncLog[]
+
+  @@unique([organizationId, lmsPlatform])
+  @@index([organizationId])
+  @@map("lms_integrations")
+}
+
+model LmsUser {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  lmsIntegrationId String   @map("lms_integration_id") @db.Uuid
+  lmsUserId        String   @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform      String   @map("lms_platform") @db.VarChar(50)
+  email            String?  @db.VarChar(255) // encrypted
+  name             String?  @db.VarChar(255) // encrypted
+  role             UserRole?
+  lmsRole          String?  @map("lms_role") @db.VarChar(100)
+  courses          Json?
+  syncedAt         DateTime? @map("synced_at") @db.Timestamptz()
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  lmsIntegration LmsIntegration @relation(fields: [lmsIntegrationId], references: [id], onDelete: Cascade)
+
+  @@unique([lmsIntegrationId, lmsUserId])
+  @@index([organizationId, lmsPlatform])
+  @@map("lms_users")
+}
+
+model LmsCourse {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lmsIntegrationId String    @map("lms_integration_id") @db.Uuid
+  lmsCourseId      String    @map("lms_course_id") @db.VarChar(255)
+  lmsPlatform      String    @map("lms_platform") @db.VarChar(50)
+  courseName       String    @map("course_name") @db.VarChar(500)
+  courseCode       String?   @map("course_code") @db.VarChar(100)
+  teacherIds       Json?     @map("teacher_ids")
+  studentCount     Int?      @map("student_count")
+  metadata         Json      @default("{}")
+  syncedAt         DateTime? @map("synced_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  lmsIntegration LmsIntegration  @relation(fields: [lmsIntegrationId], references: [id], onDelete: Cascade)
+  assignments    LmsAssignment[]
+
+  @@unique([lmsIntegrationId, lmsCourseId])
+  @@map("lms_courses")
+}
+
+model LmsAssignment {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lmsIntegrationId String    @map("lms_integration_id") @db.Uuid
+  lmsAssignmentId  String    @map("lms_assignment_id") @db.VarChar(255)
+  lmsCourseId      String    @map("lms_course_id") @db.VarChar(255)
+  lmsPlatform      String    @map("lms_platform") @db.VarChar(50)
+  assignmentName   String    @map("assignment_name") @db.VarChar(500)
+  dueDate          DateTime? @map("due_date") @db.Timestamptz()
+  description      String?   @db.Text
+  metadata         Json      @default("{}")
+  syncedAt         DateTime? @map("synced_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  lmsIntegration LmsIntegration @relation(fields: [lmsIntegrationId], references: [id], onDelete: Cascade)
+  course         LmsCourse      @relation(fields: [lmsIntegrationId, lmsCourseId], references: [lmsIntegrationId, lmsCourseId])
+
+  @@unique([lmsIntegrationId, lmsAssignmentId])
+  @@map("lms_assignments")
+}
+
+model LmsSyncLog {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lmsIntegrationId String    @map("lms_integration_id") @db.Uuid
+  syncType         String    @map("sync_type") @db.VarChar(50)
+  status           String    @db.VarChar(30)
+  recordsSynced    Int?      @map("records_synced")
+  errorMessage     String?   @map("error_message") @db.Text
+  startedAt        DateTime? @map("started_at") @db.Timestamptz()
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  lmsIntegration LmsIntegration @relation(fields: [lmsIntegrationId], references: [id], onDelete: Cascade)
+
+  @@index([lmsIntegrationId, createdAt])
+  @@map("lms_sync_logs")
+}
+
+// =====================================================
+// VOICE CALLS
+// =====================================================
+
+model VoiceCall {
+  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId         String?         @map("conversation_id") @db.Uuid
+  organizationId         String          @map("organization_id") @db.Uuid
+  lmsUserId              String?         @map("lms_user_id") @db.VarChar(255)
+  lmsPlatform            String?         @map("lms_platform") @db.VarChar(50)
+  userRole               UserRole?       @map("user_role")
+  direction              String          @db.VarChar(20) // inbound | outbound
+  phoneNumber            String          @map("phone_number") @db.VarChar(30) // encrypted
+  customerId             String?         @map("customer_id") @db.Uuid
+  agentId                String?         @map("agent_id") @db.Uuid
+  aiVoiceConfig          Json?           @map("ai_voice_config")
+  status                 String          @default("initiated") @db.VarChar(30)
+  durationSeconds        Int?            @map("duration_seconds")
+  recordingUrl           String?         @map("recording_url") @db.Text
+  recordingConsentGiven  Boolean?        @map("recording_consent_given")
+  transcript             String?         @db.Text
+  aiSummary              String?         @map("ai_summary") @db.Text
+  sentiment              String?         @db.VarChar(20)
+  tutoringTopic          String?         @map("tutoring_topic") @db.VarChar(255)
+  studentStruggled       Boolean?        @map("student_struggled")
+  escalatedToHuman       Boolean?        @map("escalated_to_human")
+  metadata               Json            @default("{}")
+  startedAt              DateTime?       @map("started_at") @db.Timestamptz()
+  endedAt                DateTime?       @map("ended_at") @db.Timestamptz()
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@map("voice_calls")
+}
+
+// =====================================================
+// HANDOFFS (AI → Human)
+// =====================================================
+
+model Handoff {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId   String   @map("conversation_id") @db.Uuid
+  fromType         String   @map("from_type") @db.VarChar(20) // ai | agent | system
+  fromId           String?  @map("from_id") @db.Uuid
+  toAgentId        String?  @map("to_agent_id") @db.Uuid
+  reason           String?  @db.VarChar(100)
+  confidenceScore  Decimal? @map("confidence_score") @db.Decimal(3, 2)
+  contextSummary   String?  @map("context_summary") @db.Text
+  status           String   @default("pending") @db.VarChar(30)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz()
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz()
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toAgent      User?        @relation(fields: [toAgentId], references: [id])
+
+  @@index([conversationId])
+  @@index([toAgentId, status])
+  @@map("handoffs")
+}
+
+// =====================================================
+// CONTENT MODERATION POLICIES
+// =====================================================
+
+model ContentModerationPolicy {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  ageGroup           String   @map("age_group") @db.VarChar(50)
+  sensitivityLevel   String   @map("sensitivity_level") @db.VarChar(30)
+  enabledCategories  String[] @map("enabled_categories")
+  autoEscalate       Boolean  @default(true) @map("auto_escalate")
+  notifyParent       Boolean  @default(true) @map("notify_parent")
+  metadata           Json     @default("{}")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, ageGroup])
+  @@map("content_moderation_policies")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEAM_LEAD
+  AGENT
+  TEACHER
+  PARENT
+  STUDENT
+}
+
+enum OrganizationPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum ConversationStatus {
+  ACTIVE
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum ConversationChannel {
+  CHAT
+  EMAIL
+  VOICE
+  WHATSAPP
+  MESSENGER
+  SLACK
+  TELEGRAM
+  DISCORD
+}
+
+enum MessageSenderType {
+  CUSTOMER
+  AGENT
+  AI
+  SYSTEM
+}
+
+enum MessageContentType {
+  TEXT
+  HTML
+  MARKDOWN
+  FILE
+  IMAGE
+  AUDIO
+  VIDEO
+  CAROUSEL
+  QUICK_REPLY
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  FLAGGED
+  BLOCKED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketSource {
+  EMAIL
+  CHAT
+  VOICE
+  MANUAL
+  LMS
+  API
+}
+
+enum KbArticleStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum KbArticleSource {
+  MANUAL
+  AI_GENERATED
+  IMPORTED
+  WEB_SCRAPED
+}
