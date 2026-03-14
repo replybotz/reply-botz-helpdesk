@@ -1,8 +1,8 @@
 {
-  "name": "reply-botz-helpdesk",
+  "name": "reply-botz-hd",
   "version": "2.0.0",
   "private": true,
-  "description": "AI-first helpdesk and support system for EdTech platforms",
+  "description": "Reply Botz HD - AI-first helpdesk and support system for EdTech platforms",
   "license": "GPL-3.0",
   "packageManager": "pnpm@10.29.3",
   "engines": {

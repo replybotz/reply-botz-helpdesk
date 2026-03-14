@@ -70,7 +70,7 @@ async function bootstrap() {
   // Swagger documentation
   if (configService.get<string>('NODE_ENV') !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Reply Botz Helpdesk API')
+      .setTitle('Reply Botz HD API')
       .setDescription(
         'AI-first helpdesk and support system for EdTech platforms. FERPA compliant.',
       )
@@ -92,7 +92,7 @@ async function bootstrap() {
   }
 
   await app.listen(port);
-  logger.log(`🚀 Reply Botz Helpdesk API running on port ${port}`);
+  logger.log(`🚀 Reply Botz HD API running on port ${port}`);
   logger.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
   logger.log(`🏥 Health check: http://localhost:${port}/api/health`);
 }

@@ -1,4 +1,4 @@
--- Initialize PostgreSQL extensions required by Reply Botz Helpdesk
+-- Initialize PostgreSQL extensions required by Reply Botz HD
 -- This script runs on first database creation
 
 -- Enable pgcrypto for column-level encryption
@@ -19,4 +19,4 @@ SET timezone = 'UTC';
 -- Create helpdesk database if running against default postgres database
 -- (Not needed when POSTGRES_DB=helpdesk is set in Docker Compose)
 
-COMMENT ON DATABASE helpdesk IS 'Reply Botz AI Helpdesk - EdTech Support Platform';
+COMMENT ON DATABASE helpdesk IS 'Reply Botz HD - EdTech Support Platform';

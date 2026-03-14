@@ -40,8 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="text-white text-sm font-bold">RB</span>
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white text-sm">Reply Botz</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Helpdesk</p>
+              <p className="font-semibold text-gray-900 dark:text-white text-sm">Reply Botz HD</p>
             </div>
           </div>
         </div>

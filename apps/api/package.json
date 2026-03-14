@@ -2,7 +2,7 @@
   "name": "@reply-botz/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Reply Botz Helpdesk API - NestJS Backend",
+  "description": "Reply Botz HD API - NestJS Backend",
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",

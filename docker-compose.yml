@@ -132,7 +132,7 @@ services:
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:3001/api
-      NEXT_PUBLIC_APP_NAME: Reply Botz Helpdesk
+      NEXT_PUBLIC_APP_NAME: Reply Botz HD
     volumes:
       - ./apps/web/src:/app/src
     depends_on:

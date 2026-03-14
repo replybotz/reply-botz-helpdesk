@@ -1,5 +1,5 @@
 # ============================================================
-# Reply Botz API - Multi-stage Dockerfile
+# Reply Botz HD API - Multi-stage Dockerfile
 # ============================================================
 
 # Stage 1: Base

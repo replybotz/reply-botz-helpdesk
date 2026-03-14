@@ -10,7 +10,7 @@ export interface MfaSetup {
 
 @Injectable()
 export class MfaService {
-  async generateSecret(email: string, issuer = 'Reply Botz Helpdesk'): Promise<MfaSetup> {
+  async generateSecret(email: string, issuer = 'Reply Botz HD'): Promise<MfaSetup> {
     const secret = speakeasy.generateSecret({
       name: `${issuer} (${email})`,
       issuer,

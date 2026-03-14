@@ -1,5 +1,5 @@
 # ============================================================
-# Reply Botz Web - Multi-stage Dockerfile
+# Reply Botz HD Web - Multi-stage Dockerfile
 # ============================================================
 
 FROM node:20-alpine AS base

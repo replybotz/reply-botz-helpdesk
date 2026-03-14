@@ -11,7 +11,7 @@ async function main() {
     where: { slug: 'default' },
     update: {},
     create: {
-      name: 'Reply Botz Demo',
+      name: 'Reply Botz HD Demo',
       slug: 'default',
       plan: OrganizationPlan.PROFESSIONAL,
       settings: {

@@ -1,4 +1,4 @@
-// This is the Prisma schema for Reply Botz Helpdesk
+// This is the Prisma schema for Reply Botz HD
 // AI-first helpdesk for EdTech platforms with FERPA compliance
 
 generator client {

@@ -27,7 +27,7 @@ export class OpenRouterProvider implements IAiProvider {
         baseURL: 'https://openrouter.ai/api/v1',
         defaultHeaders: {
           'HTTP-Referer': 'https://replybotz.com',
-          'X-Title': 'Reply Botz Helpdesk',
+          'X-Title': 'Reply Botz HD',
         },
       });
     }

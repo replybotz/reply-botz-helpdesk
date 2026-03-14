@@ -1,4 +1,4 @@
-=== Reply Botz Helpdesk ===
+=== Reply Botz HD ===
 Contributors: replybotz.com
 Tags:  livechat, chat, live chat, chatbot, free-live-chat, free live chat, live-chat, live chat, live support, chat-plugin, bot, chat plugin, chat bot
 Requires at least: 3.0.0
@@ -130,7 +130,7 @@ Upload the plugin folder to the `/wp-content/plugins/` directory, or install the
 From the WordPress admin area go to Settings > Reply Botz  and insert the embed code of the chat (get it from https://chat.replybotz.com/account/account/).
 Use the shortcode [rb-tickets] to display the ticket area. Use the shortcode [rb-articles] to display the articles area.
 
-= What is Reply Botz Helpdesk=
+= What is Reply Botz HD=
 
 Reply Botz provides a customer messaging platform for small and medium companies to help them scale their customers relationship. Live Chat and the chatbot are two of the main features but not the only ones. Give them a try!
 

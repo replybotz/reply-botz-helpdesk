@@ -17,8 +17,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Reply Botz Helpdesk',
-    template: '%s | Reply Botz Helpdesk',
+    default: 'Reply Botz HD',
+    template: '%s | Reply Botz HD',
   },
   description: 'AI-first helpdesk and support system for EdTech platforms. FERPA compliant.',
   keywords: ['helpdesk', 'AI', 'EdTech', 'LMS', 'support', 'FERPA'],
