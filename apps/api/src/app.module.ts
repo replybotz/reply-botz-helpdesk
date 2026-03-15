@@ -26,6 +26,11 @@ import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
 import { LmsIntegrationsModule } from './modules/lms-integrations/lms-integrations.module';
 import { ContentModerationModule } from './modules/content-moderation/content-moderation.module';
 import { FerpaComplianceModule } from './modules/ferpa-compliance/ferpa-compliance.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -70,6 +75,11 @@ import { HealthController } from './health.controller';
     LmsIntegrationsModule,
     ContentModerationModule,
     FerpaComplianceModule,
+    ConversationsModule,
+    TicketsModule,
+    CustomersModule,
+    KnowledgeBaseModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [
