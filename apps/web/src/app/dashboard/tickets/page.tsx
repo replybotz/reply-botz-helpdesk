@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 
-type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'WAITING_FOR_THIRD_PARTY' | 'RESOLVED' | 'CLOSED';
+type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_ON_CUSTOMER' | 'RESOLVED' | 'CLOSED';
 type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
 interface Ticket {
@@ -30,8 +30,7 @@ interface PaginatedResponse {
 const STATUS_COLORS: Record<TicketStatus, string> = {
   OPEN: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
   IN_PROGRESS: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
-  WAITING_FOR_CUSTOMER: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
-  WAITING_FOR_THIRD_PARTY: 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
+  WAITING_ON_CUSTOMER: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
   RESOLVED: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300',
   CLOSED: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 };
@@ -179,8 +178,7 @@ export default function TicketsPage() {
           <option value="">All Statuses</option>
           <option value="OPEN">Open</option>
           <option value="IN_PROGRESS">In Progress</option>
-          <option value="WAITING_FOR_CUSTOMER">Waiting for Customer</option>
-          <option value="WAITING_FOR_THIRD_PARTY">Waiting for Third Party</option>
+          <option value="WAITING_ON_CUSTOMER">Waiting on Customer</option>
           <option value="RESOLVED">Resolved</option>
           <option value="CLOSED">Closed</option>
         </select>

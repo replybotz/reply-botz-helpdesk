@@ -125,7 +125,7 @@ export default function CustomersPage() {
           <option value="">All Roles</option>
           <option value="STUDENT">Student</option>
           <option value="PARENT">Parent</option>
-          <option value="INSTRUCTOR">Instructor</option>
+          <option value="TEACHER">Instructor</option>
           <option value="ADMIN">Admin</option>
         </select>
         <div className="flex gap-2 flex-1 min-w-48">
@@ -245,7 +245,7 @@ export default function CustomersPage() {
                   <option value="">No role</option>
                   <option value="STUDENT">Student</option>
                   <option value="PARENT">Parent</option>
-                  <option value="INSTRUCTOR">Instructor</option>
+                  <option value="TEACHER">Instructor</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>

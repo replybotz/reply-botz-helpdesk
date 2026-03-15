@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 
-type ArticleStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+type ArticleStatus = 'DRAFT' | 'REVIEW' | 'PUBLISHED' | 'ARCHIVED';
 
 interface KbArticle {
   id: string;
@@ -31,6 +31,7 @@ interface KbArticle {
 
 const STATUS_COLORS: Record<ArticleStatus, string> = {
   DRAFT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
+  REVIEW: 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
   PUBLISHED: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300',
   ARCHIVED: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 };

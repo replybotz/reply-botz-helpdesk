@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 
-type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'WAITING_FOR_THIRD_PARTY' | 'RESOLVED' | 'CLOSED';
+type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_ON_CUSTOMER' | 'RESOLVED' | 'CLOSED';
 type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
 interface TicketNote {
@@ -39,8 +39,7 @@ interface Ticket {
 const STATUS_OPTIONS: { value: TicketStatus; label: string }[] = [
   { value: 'OPEN', label: 'Open' },
   { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'WAITING_FOR_CUSTOMER', label: 'Waiting for Customer' },
-  { value: 'WAITING_FOR_THIRD_PARTY', label: 'Waiting for Third Party' },
+  { value: 'WAITING_ON_CUSTOMER', label: 'Waiting on Customer' },
   { value: 'RESOLVED', label: 'Resolved' },
   { value: 'CLOSED', label: 'Closed' },
 ];
@@ -55,8 +54,7 @@ const PRIORITY_OPTIONS: { value: TicketPriority; label: string }[] = [
 const STATUS_COLORS: Record<TicketStatus, string> = {
   OPEN: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
   IN_PROGRESS: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
-  WAITING_FOR_CUSTOMER: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
-  WAITING_FOR_THIRD_PARTY: 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
+  WAITING_ON_CUSTOMER: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
   RESOLVED: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300',
   CLOSED: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 };

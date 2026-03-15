@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api/client';
 import { useAuthStore } from '@/lib/store/auth.store';
 
-type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'TEAM_LEAD' | 'AGENT' | 'INSTRUCTOR' | 'STUDENT' | 'PARENT';
+type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'TEAM_LEAD' | 'AGENT' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 interface OrgUser {
   id: string;
@@ -29,7 +29,7 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
   TEAM_LEAD: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
   AGENT: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
-  INSTRUCTOR: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300',
+  TEACHER: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300',
   STUDENT: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
   PARENT: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300',
 };
@@ -147,7 +147,7 @@ export default function UsersSettingsPage() {
           <option value="ADMIN">Admin</option>
           <option value="TEAM_LEAD">Team Lead</option>
           <option value="AGENT">Agent</option>
-          <option value="INSTRUCTOR">Instructor</option>
+          <option value="TEACHER">Instructor</option>
         </select>
       </div>
 
@@ -282,7 +282,7 @@ export default function UsersSettingsPage() {
                   <option value="AGENT">Agent</option>
                   <option value="TEAM_LEAD">Team Lead</option>
                   <option value="ADMIN">Admin</option>
-                  <option value="INSTRUCTOR">Instructor</option>
+                  <option value="TEACHER">Instructor</option>
                 </select>
               </div>
             </div>

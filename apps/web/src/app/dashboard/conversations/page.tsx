@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 
 type ConversationStatus = 'ACTIVE' | 'WAITING' | 'RESOLVED' | 'CLOSED';
-type ConversationChannel = 'EMAIL' | 'CHAT' | 'WHATSAPP' | 'SLACK' | 'DISCORD' | 'API';
+type ConversationChannel = 'EMAIL' | 'CHAT' | 'VOICE' | 'WHATSAPP' | 'MESSENGER' | 'SLACK' | 'TELEGRAM' | 'DISCORD';
 
 interface Conversation {
   id: string;
@@ -42,10 +42,12 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 const CHANNEL_LABELS: Record<ConversationChannel, string> = {
   EMAIL: 'Email',
   CHAT: 'Chat',
+  VOICE: 'Voice',
   WHATSAPP: 'WhatsApp',
+  MESSENGER: 'Messenger',
   SLACK: 'Slack',
+  TELEGRAM: 'Telegram',
   DISCORD: 'Discord',
-  API: 'API',
 };
 
 function StatusBadge({ status }: { status: ConversationStatus }) {
@@ -183,10 +185,12 @@ export default function ConversationsPage() {
           <option value="">All Channels</option>
           <option value="EMAIL">Email</option>
           <option value="CHAT">Chat</option>
+          <option value="VOICE">Voice</option>
           <option value="WHATSAPP">WhatsApp</option>
+          <option value="MESSENGER">Messenger</option>
           <option value="SLACK">Slack</option>
+          <option value="TELEGRAM">Telegram</option>
           <option value="DISCORD">Discord</option>
-          <option value="API">API</option>
         </select>
 
         <div className="flex gap-2 flex-1 min-w-48">
@@ -328,10 +332,12 @@ export default function ConversationsPage() {
                 >
                   <option value="CHAT">Chat</option>
                   <option value="EMAIL">Email</option>
+                  <option value="VOICE">Voice</option>
                   <option value="WHATSAPP">WhatsApp</option>
+                  <option value="MESSENGER">Messenger</option>
                   <option value="SLACK">Slack</option>
+                  <option value="TELEGRAM">Telegram</option>
                   <option value="DISCORD">Discord</option>
-                  <option value="API">API</option>
                 </select>
               </div>
 
