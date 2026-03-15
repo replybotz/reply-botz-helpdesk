@@ -6,14 +6,17 @@ import { useAuthStore } from '@/lib/store/auth.store';
 import Link from 'next/link';
 
 const navItems = [
-  { href: '/dashboard', label: 'Overview', icon: '📊' },
+  { href: '/dashboard', label: 'Overview', icon: '📊', exact: true },
   { href: '/dashboard/conversations', label: 'Conversations', icon: '💬' },
   { href: '/dashboard/tickets', label: 'Tickets', icon: '🎫' },
+  { href: '/dashboard/customers', label: 'Customers', icon: '👥' },
   { href: '/dashboard/knowledge-base', label: 'Knowledge Base', icon: '📚' },
   { href: '/dashboard/analytics', label: 'Analytics', icon: '📈' },
   { href: '/dashboard/settings/lms', label: 'LMS Integrations', icon: '🔗' },
   { href: '/dashboard/settings/ai', label: 'AI Settings', icon: '🤖' },
   { href: '/dashboard/settings/ferpa', label: 'FERPA & Privacy', icon: '🔒' },
+  { href: '/dashboard/settings/users', label: 'Users & Agents', icon: '🧑‍💼' },
+  { href: '/dashboard/settings/security', label: 'Security', icon: '🛡️' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -48,7 +51,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            const isActive = item.exact
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <Link
                 key={item.href}
