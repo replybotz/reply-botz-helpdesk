@@ -35,5 +35,15 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "prisma",
+      "argon2",
+      "bcrypt",
+      "esbuild"
+    ]
+  }
 }

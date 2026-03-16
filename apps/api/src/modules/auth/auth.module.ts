@@ -7,9 +7,11 @@ import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { FerpaComplianceModule } from '../ferpa-compliance/ferpa-compliance.module';
 
 @Module({
   imports: [
+    FerpaComplianceModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
