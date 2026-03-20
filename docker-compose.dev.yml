@@ -1,0 +1,30 @@
+services:
+  app:
+    build: !reset null
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npx prisma generate && npm run dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    env_file: .env.local
+
+  # Disable nginx/certbot in dev
+  nginx:
+    profiles: [production]
+  certbot:
+    profiles: [production]
+
+  # Disable monitoring in dev (optional)
+  prometheus:
+    profiles: [monitoring]
+  grafana:
+    profiles: [monitoring]
+  loki:
+    profiles: [monitoring]
+  promtail:
+    profiles: [monitoring]

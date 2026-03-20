@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────── ENUMS ────────────
+
+enum TenantPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  SUPERVISOR
+  AGENT
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum ConversationChannel {
+  LIVE_CHAT
+  EMAIL
+  VOICE
+  WHATSAPP
+  FACEBOOK
+  TELEGRAM
+  SLACK
+  TWITTER
+  API
+}
+
+enum ConversationStatus {
+  OPEN
+  ASSIGNED
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum MessageRole {
+  CUSTOMER
+  AGENT
+  AI
+  SYSTEM
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  WAITING_ON_THIRD_PARTY
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+}
+
+// ──────────── MODELS ────────────
+
+model Tenant {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @db.VarChar(255)
+  slug      String       @unique @db.VarChar(63)
+  domain    String?      @unique @db.VarChar(255)
+  plan      TenantPlan   @default(FREE)
+  status    TenantStatus @default(ACTIVE)
+  settings  Json         @default("{}")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  users            User[]
+  conversations    Conversation[]
+  tickets          Ticket[]
+  articles         KnowledgeBaseArticle[]
+  aiConfigurations AiConfiguration[]
+  integrations     Integration[]
+  auditLogs        AuditLog[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+model User {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  email           String     @db.VarChar(255)
+  passwordHash    String     @map("password_hash") @db.VarChar(255)
+  displayName     String?    @map("display_name") @db.VarChar(255)
+  avatarUrl       String?    @map("avatar_url") @db.VarChar(500)
+  role            UserRole   @default(CUSTOMER)
+  status          UserStatus @default(PENDING_VERIFICATION)
+  mfaSecret       String?    @map("mfa_secret") @db.VarChar(255)
+  mfaEnabled      Boolean    @default(false) @map("mfa_enabled")
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  assignedTickets Ticket[]       @relation("AssignedAgent")
+  customerConvos  Conversation[] @relation("ConversationCustomer")
+  messages        Message[]
+  auditLogs       AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([email])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  refreshToken String   @unique @map("refresh_token") @db.VarChar(500)
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Conversation {
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String              @map("tenant_id") @db.Uuid
+  channel    ConversationChannel
+  customerId String              @map("customer_id") @db.Uuid
+  status     ConversationStatus  @default(OPEN)
+  metadata   Json                @default("{}")
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer User      @relation("ConversationCustomer", fields: [customerId], references: [id])
+  messages Message[]
+  ticket   Ticket?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  senderId       String?     @map("sender_id") @db.Uuid
+  role           MessageRole
+  content        String      @db.Text
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model Ticket {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  conversationId String?        @unique @map("conversation_id") @db.Uuid
+  subject        String         @db.VarChar(500)
+  description    String         @db.Text
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+  assignedTo     String?        @map("assigned_to") @db.Uuid
+  slaDeadline    DateTime?      @map("sla_deadline")
+  resolvedAt     DateTime?      @map("resolved_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  assignee     User?         @relation("AssignedAgent", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedTo])
+  @@index([tenantId, priority])
+  @@index([slaDeadline])
+  @@map("tickets")
+}
+
+model KnowledgeBaseArticle {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  title     String        @db.VarChar(500)
+  slug      String        @db.VarChar(500)
+  content   String        @db.Text
+  tags      String[]      @default([])
+  status    ArticleStatus @default(DRAFT)
+  views     Int           @default(0)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("knowledge_base_articles")
+}
+
+model AiConfiguration {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  provider  String   @db.VarChar(50)
+  model     String   @db.VarChar(100)
+  apiKey    String   @map("api_key") @db.Text
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("ai_configurations")
+}
+
+model Integration {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String            @map("tenant_id") @db.Uuid
+  type      String            @db.VarChar(50)
+  config    String            @db.Text
+  status    IntegrationStatus @default(INACTIVE)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("integrations")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.Uuid
+  changes    Json     @default("{}")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
