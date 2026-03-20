@@ -5,6 +5,7 @@ const navigation = [
   { name: 'Conversations', href: '/conversations' },
   { name: 'Tickets', href: '/tickets' },
   { name: 'Knowledge Base', href: '/kb' },
+  { name: 'Users', href: '/users' },
   { name: 'Settings', href: '/settings' },
 ];
 
