@@ -11,7 +11,7 @@ const createAiConfigSchema = z.object({
   provider: z.string().min(1).max(50),
   model: z.string().min(1).max(100),
   apiKey: z.string().min(1),
-  settings: z.record(z.string(), z.unknown()).optional().default({}),
+  settings: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const GET = withPermission(
