@@ -8,338 +8,355 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #fafafa; --bg-card: #ffffff; --border: #e4e4e7;
-    --text: #18181b; --text-muted: #71717a; --text-dim: #a1a1aa;
-    --accent: #18181b; --accent-hover: #3f3f46;
-    --green: #16a34a; --green-bg: #f0fdf4;
-    --red: #dc2626; --red-bg: #fef2f2;
-    --yellow: #ca8a04; --yellow-bg: #fefce8;
+    --bg: #fafafa; --surface: #ffffff; --border: #e4e4e7; --border-dim: #f4f4f5;
+    --text: #18181b; --muted: #71717a; --dim: #a1a1aa;
+    --accent: #18181b; --accent-hover: #3f3f46; --accent-text: #ffffff;
+    --green: #16a34a; --green-bg: #f0fdf4; --green-border: #bbf7d0;
+    --red: #dc2626; --red-bg: #fef2f2; --red-border: #fecaca;
+    --amber: #d97706; --amber-bg: #fffbeb; --amber-border: #fde68a;
     --blue: #2563eb; --blue-bg: #eff6ff;
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #09090b; --bg-card: #18181b; --border: #27272a;
-      --text: #fafafa; --text-muted: #a1a1aa; --text-dim: #52525b;
-      --accent: #f4f4f5; --accent-hover: #d4d4d8;
-      --green: #4ade80; --green-bg: rgba(34,197,94,0.1);
-      --red: #f87171; --red-bg: rgba(239,68,68,0.1);
-      --yellow: #facc15; --yellow-bg: rgba(234,179,8,0.1);
-      --blue: #60a5fa; --blue-bg: rgba(59,130,246,0.1);
+      --bg: #09090b; --surface: #18181b; --border: #27272a; --border-dim: #1e1e21;
+      --text: #fafafa; --muted: #a1a1aa; --dim: #52525b;
+      --accent: #e4e4e7; --accent-hover: #d4d4d8; --accent-text: #09090b;
+      --green: #4ade80; --green-bg: rgba(34,197,94,0.08); --green-border: rgba(34,197,94,0.25);
+      --red: #f87171; --red-bg: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.25);
+      --amber: #fbbf24; --amber-bg: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.25);
+      --blue: #60a5fa; --blue-bg: rgba(59,130,246,0.08);
     }
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     background: var(--bg); color: var(--text);
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    padding: 1rem;
+    padding: 1rem; line-height: 1.5;
   }
 
-  .container { width: 100%; max-width: 640px; }
+  .container { width: 100%; max-width: 580px; }
 
   .card {
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 0.75rem; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 0.75rem; padding: 2rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
   }
 
-  h1 { font-size: 1.5rem; font-weight: 700; text-align: center; }
-  .subtitle { text-align: center; color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem; }
+  .header { text-align: center; margin-bottom: 1.5rem; }
+  .header h1 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.01em; }
+  .header p { color: var(--muted); font-size: 0.875rem; margin-top: 0.25rem; }
 
-  .steps {
-    display: flex; gap: 0.5rem; justify-content: center; margin: 1.5rem 0;
+  /* Step indicators */
+  .steps { display: flex; gap: 0.375rem; justify-content: center; margin-bottom: 1.75rem; }
+  .step-pip {
+    width: 2rem; height: 0.25rem; border-radius: 2px; background: var(--border);
+    transition: background 0.25s;
   }
-  .step-dot {
-    width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center;
-    justify-content: center; font-size: 0.75rem; font-weight: 600;
-    border: 2px solid var(--border); color: var(--text-dim); transition: all 0.2s;
-  }
-  .step-dot.active { border-color: var(--accent); color: var(--accent); background: var(--bg); }
-  .step-dot.done { border-color: var(--green); color: white; background: var(--green); }
+  .step-pip.active { background: var(--accent); }
+  .step-pip.done { background: var(--green); }
 
+  /* Panels */
   .panel { display: none; }
-  .panel.active { display: block; }
+  .panel.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  .check-list { list-style: none; margin: 1rem 0; }
+  .panel-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; }
+
+  /* Check list */
+  .check-list { list-style: none; }
   .check-item {
-    display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0;
-    border-bottom: 1px solid var(--border); font-size: 0.875rem;
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.5rem 0; font-size: 0.875rem;
   }
-  .check-item:last-child { border-bottom: none; }
-  .check-icon { width: 1.25rem; text-align: center; font-size: 1rem; flex-shrink: 0; }
-  .check-detail { color: var(--text-muted); margin-left: auto; font-size: 0.8rem; }
+  .check-item + .check-item { border-top: 1px solid var(--border-dim); }
+  .check-icon { width: 1.25rem; height: 1.25rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .check-icon svg { width: 1rem; height: 1rem; }
+  .check-detail { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
 
-  label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; }
-  input, select {
-    width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border);
-    border-radius: 0.5rem; font-size: 0.875rem; background: var(--bg);
-    color: var(--text); outline: none; transition: border-color 0.15s;
+  /* Forms */
+  .field { margin-bottom: 0.875rem; }
+  .field label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.25rem; color: var(--text); }
+  .field input, .field select {
+    width: 100%; padding: 0.5rem 0.625rem;
+    border: 1px solid var(--border); border-radius: 0.375rem;
+    font-size: 0.875rem; background: var(--bg); color: var(--text);
+    outline: none; transition: border-color 0.15s;
   }
-  input:focus, select:focus { border-color: var(--accent); }
-  .field { margin-bottom: 1rem; }
-  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .field-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+  .field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .field-hint { font-size: 0.75rem; color: var(--dim); margin-top: 0.2rem; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+  .section-divider {
+    border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;
+  }
 
   .toggle-row {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.75rem 0; border-bottom: 1px solid var(--border);
+    padding: 0.625rem 0;
   }
-  .toggle-label { font-size: 0.875rem; font-weight: 500; }
-  .toggle-desc { font-size: 0.75rem; color: var(--text-muted); }
+  .toggle-label { font-size: 0.8125rem; font-weight: 500; }
+  .toggle-desc { font-size: 0.75rem; color: var(--muted); }
   .toggle {
-    width: 2.5rem; height: 1.375rem; border-radius: 999px; border: none;
-    background: var(--border); cursor: pointer; position: relative; transition: background 0.2s;
+    appearance: none; width: 2.25rem; height: 1.25rem; border-radius: 999px;
+    background: var(--border); cursor: pointer; position: relative;
+    border: none; transition: background 0.2s; flex-shrink: 0;
   }
-  .toggle.on { background: var(--green); }
+  .toggle:checked { background: var(--green); }
   .toggle::after {
-    content: ''; position: absolute; width: 1rem; height: 1rem; border-radius: 50%;
-    background: white; top: 3px; left: 3px; transition: transform 0.2s;
+    content: ''; position: absolute; width: 0.875rem; height: 0.875rem;
+    border-radius: 50%; background: white; top: 0.1875rem; left: 0.1875rem;
+    transition: transform 0.2s;
   }
-  .toggle.on::after { transform: translateX(1.1rem); }
+  .toggle:checked::after { transform: translateX(1rem); }
 
-  .collapsible-trigger {
-    font-size: 0.875rem; color: var(--blue); cursor: pointer; background: none;
-    border: none; padding: 0.5rem 0; font-weight: 500;
+  .collapsible-btn {
+    font-size: 0.8125rem; color: var(--blue); cursor: pointer;
+    background: none; border: none; padding: 0; font-weight: 500; margin-top: 0.25rem;
   }
-  .collapsible-body { display: none; margin-top: 0.5rem; }
-  .collapsible-body.open { display: block; }
+  .collapsible { display: none; padding-top: 0.5rem; }
+  .collapsible.open { display: block; }
 
-  .summary-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .summary-table td {
-    padding: 0.5rem 0; border-bottom: 1px solid var(--border); vertical-align: top;
-  }
-  .summary-table td:first-child { font-weight: 500; width: 40%; color: var(--text-muted); }
+  /* Review table */
+  .review-table { width: 100%; font-size: 0.875rem; }
+  .review-table tr + tr td { border-top: 1px solid var(--border-dim); }
+  .review-table td { padding: 0.5rem 0; vertical-align: top; }
+  .review-table td:first-child { color: var(--muted); width: 40%; font-weight: 500; font-size: 0.8125rem; }
 
-  .progress-list { list-style: none; margin: 1rem 0; }
-  .progress-item {
-    display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0;
-    font-size: 0.875rem;
+  /* Progress */
+  .phase-list { list-style: none; }
+  .phase-item {
+    display: flex; align-items: flex-start; gap: 0.625rem;
+    padding: 0.5rem 0; font-size: 0.875rem;
   }
-  .progress-icon { width: 1.25rem; text-align: center; flex-shrink: 0; margin-top: 0.1rem; }
-  .progress-msg { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.125rem; word-break: break-word; }
+  .phase-icon { width: 1.25rem; height: 1.25rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 0.05rem; }
+  .phase-label { font-weight: 500; }
+  .phase-msg { font-size: 0.8rem; color: var(--muted); margin-top: 0.125rem; word-break: break-word; }
+
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner {
-    width: 1rem; height: 1rem; border: 2px solid var(--border);
-    border-top-color: var(--accent); border-radius: 50%;
-    animation: spin 0.6s linear infinite; display: inline-block;
+    width: 0.875rem; height: 0.875rem;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.6s linear infinite;
   }
 
   .log-box {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
-    padding: 0.75rem; max-height: 200px; overflow-y: auto; font-family: monospace;
-    font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem; white-space: pre-wrap;
-    word-break: break-all;
+    margin-top: 1rem; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 0.375rem; padding: 0.625rem;
+    max-height: 180px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.6875rem; color: var(--muted); white-space: pre-wrap; word-break: break-all;
+    line-height: 1.6;
   }
 
+  /* Banners */
   .banner {
-    text-align: center; padding: 1.5rem; border-radius: 0.5rem; margin: 1rem 0;
+    text-align: center; padding: 1.25rem; border-radius: 0.5rem; margin-bottom: 1rem;
   }
-  .banner.success { background: var(--green-bg); color: var(--green); }
-  .banner.error { background: var(--red-bg); color: var(--red); }
-  .banner h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+  .banner-success { background: var(--green-bg); border: 1px solid var(--green-border); }
+  .banner-success h2 { color: var(--green); font-size: 1.125rem; }
+  .banner-success p { color: var(--green); font-size: 0.875rem; opacity: 0.85; margin-top: 0.25rem; }
+  .banner-error { background: var(--red-bg); border: 1px solid var(--red-border); }
+  .banner-error h2 { color: var(--red); font-size: 1.125rem; }
+  .banner-error p { color: var(--red); font-size: 0.875rem; opacity: 0.85; margin-top: 0.25rem; }
 
-  .info-box {
+  .info-card {
     background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
-    padding: 1rem; margin: 1rem 0; font-size: 0.875rem;
+    padding: 0.875rem; margin-bottom: 0.75rem; font-size: 0.875rem;
   }
-  .info-box .info-label { font-weight: 600; margin-bottom: 0.25rem; }
-  .info-box .info-row { display: flex; justify-content: space-between; padding: 0.25rem 0; }
-  .info-box .info-val { color: var(--text-muted); font-family: monospace; font-size: 0.8rem; }
+  .info-card-title { font-weight: 600; font-size: 0.8125rem; margin-bottom: 0.375rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 0.2rem 0; }
+  .info-row + .info-row { border-top: 1px solid var(--border-dim); padding-top: 0.35rem; }
+  .info-val { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; color: var(--muted); }
+  .info-val a { color: var(--blue); text-decoration: none; }
+  .info-val a:hover { text-decoration: underline; }
 
+  .alert {
+    padding: 0.625rem 0.75rem; border-radius: 0.375rem; font-size: 0.8125rem;
+    margin: 0.75rem 0;
+  }
+  .alert-warn { background: var(--amber-bg); border: 1px solid var(--amber-border); color: var(--amber); }
+  .alert-error { background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red); }
+
+  /* Buttons */
   .btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 0.625rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem;
+    padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem;
     font-weight: 500; border: none; cursor: pointer; transition: all 0.15s;
     text-decoration: none;
   }
-  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary { background: var(--accent); color: var(--accent-text); }
   .btn-primary:hover { background: var(--accent-hover); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-secondary {
-    background: transparent; color: var(--text-muted);
-    border: 1px solid var(--border);
-  }
-  .btn-secondary:hover { background: var(--bg); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--bg); color: var(--text); }
+  .btn-row { display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem; }
 
-  .btn-row { display: flex; justify-content: space-between; margin-top: 1.5rem; }
-
-  .alert {
-    padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; margin: 1rem 0;
-  }
-  .alert-error { background: var(--red-bg); color: var(--red); }
-  .alert-warn { background: var(--yellow-bg); color: var(--yellow); }
+  .muted { font-size: 0.75rem; color: var(--dim); text-align: center; margin-top: 1rem; }
 </style>
 </head>
 <body>
 
 <div class="container">
   <div class="card">
-    <h1>Reply Botz HD</h1>
-    <p class="subtitle">Installation Wizard</p>
-
-    <div class="steps">
-      <div class="step-dot active" data-step="0">1</div>
-      <div class="step-dot" data-step="1">2</div>
-      <div class="step-dot" data-step="2">3</div>
-      <div class="step-dot" data-step="3">4</div>
-      <div class="step-dot" data-step="4">5</div>
+    <div class="header">
+      <h1>Reply Botz HD</h1>
+      <p>Installation Wizard</p>
     </div>
 
-    <!-- Step 1: Welcome + Preflight -->
-    <div class="panel active" id="step-0">
-      <h2 style="font-size:1.125rem; margin-bottom:0.5rem;">Welcome</h2>
-      <p style="font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem;">
-        This wizard will set up Reply Botz HD on your server. Let's check that everything is ready.
-      </p>
-      <ul class="check-list" id="preflight-list">
-        <li class="check-item"><span class="check-icon"><span class="spinner"></span></span> Running checks...</li>
+    <div class="steps" id="steps">
+      <div class="step-pip active"></div>
+      <div class="step-pip"></div>
+      <div class="step-pip"></div>
+      <div class="step-pip"></div>
+      <div class="step-pip"></div>
+    </div>
+
+    <!-- Step 0: Preflight -->
+    <div class="panel active" id="panel-0">
+      <p class="panel-title">System Check</p>
+      <ul class="check-list" id="checks">
+        <li class="check-item">
+          <span class="check-icon"><span class="spinner"></span></span>
+          <span>Running checks...</span>
+        </li>
       </ul>
-      <div id="preflight-error" class="alert alert-error" style="display:none;"></div>
+      <div id="preflight-alert" style="display:none"></div>
       <div class="btn-row">
         <span></span>
-        <button class="btn btn-primary" id="btn-next-0" disabled>Continue</button>
+        <button class="btn btn-primary" id="btn-step0" disabled>Continue</button>
       </div>
     </div>
 
-    <!-- Step 2: Configuration -->
-    <div class="panel" id="step-1">
-      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Configuration</h2>
+    <!-- Step 1: Configuration -->
+    <div class="panel" id="panel-1">
+      <p class="panel-title">Configuration</p>
 
       <div class="field">
-        <label for="cfg-url">Application URL</label>
-        <input id="cfg-url" type="url" value="http://localhost:3000" placeholder="https://helpdesk.example.com">
-        <p class="field-hint">The public URL where users will access Reply Botz HD</p>
-      </div>
-
-      <div class="field">
-        <label for="cfg-domain">Domain</label>
-        <input id="cfg-domain" type="text" value="replybotz.localhost" placeholder="helpdesk.example.com">
-        <p class="field-hint">Used for tenant subdomain resolution</p>
+        <label for="f-domain">Domain (optional)</label>
+        <input id="f-domain" type="text" placeholder="helpdesk.example.com">
+        <p class="field-hint">Leave blank to use your server's IP address</p>
       </div>
 
       <div class="field-row">
         <div class="field">
-          <label for="cfg-mode">Mode</label>
-          <select id="cfg-mode">
-            <option value="prod">Production</option>
-            <option value="dev">Development</option>
+          <label for="f-mode">Mode</label>
+          <select id="f-mode">
+            <option value="production">Production</option>
+            <option value="development">Development</option>
           </select>
         </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <div class="toggle-row" style="border:none; padding:0.5rem 0;">
+        <div class="field" style="display:flex; align-items:flex-end;">
+          <div class="toggle-row" style="width:100%">
             <div>
               <div class="toggle-label">Monitoring</div>
-              <div class="toggle-desc">Prometheus + Grafana</div>
+              <div class="toggle-desc">Grafana + Prometheus</div>
             </div>
-            <button class="toggle" id="cfg-monitoring" type="button" aria-label="Toggle monitoring"></button>
+            <input type="checkbox" class="toggle" id="f-monitoring">
           </div>
         </div>
       </div>
 
-      <hr style="border:none; border-top:1px solid var(--border); margin:1rem 0;">
+      <hr class="section-divider">
+      <p class="panel-title">Admin Account</p>
 
-      <h3 style="font-size:1rem; margin-bottom:0.75rem;">Admin Account</h3>
       <div class="field">
-        <label for="cfg-email">Admin Email</label>
-        <input id="cfg-email" type="email" value="admin@replybotz.com" placeholder="admin@example.com">
+        <label for="f-email">Email</label>
+        <input id="f-email" type="email" value="admin@replybotz.com" placeholder="admin@example.com">
       </div>
       <div class="field">
-        <label for="cfg-password">Admin Password</label>
-        <input id="cfg-password" type="password" placeholder="Minimum 8 characters">
-        <p class="field-hint">Choose a strong password for the super admin account</p>
+        <label for="f-password">Password</label>
+        <input id="f-password" type="password" placeholder="Min 8 characters">
       </div>
 
-      <button class="collapsible-trigger" id="smtp-toggle" type="button">+ SMTP Settings (optional)</button>
-      <div class="collapsible-body" id="smtp-body">
+      <button class="collapsible-btn" id="smtp-btn" type="button">+ SMTP Settings (optional)</button>
+      <div class="collapsible" id="smtp-section">
+        <div class="field-row" style="margin-top:0.5rem">
+          <div class="field">
+            <label for="f-smtp-host">Host</label>
+            <input id="f-smtp-host" type="text" placeholder="smtp.example.com">
+          </div>
+          <div class="field">
+            <label for="f-smtp-port">Port</label>
+            <input id="f-smtp-port" type="number" value="587">
+          </div>
+        </div>
         <div class="field-row">
           <div class="field">
-            <label for="cfg-smtp-host">SMTP Host</label>
-            <input id="cfg-smtp-host" type="text" placeholder="smtp.example.com">
+            <label for="f-smtp-user">Username</label>
+            <input id="f-smtp-user" type="text">
           </div>
           <div class="field">
-            <label for="cfg-smtp-port">Port</label>
-            <input id="cfg-smtp-port" type="number" value="587" placeholder="587">
-          </div>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="cfg-smtp-user">Username</label>
-            <input id="cfg-smtp-user" type="text" placeholder="user@example.com">
-          </div>
-          <div class="field">
-            <label for="cfg-smtp-pass">Password</label>
-            <input id="cfg-smtp-pass" type="password" placeholder="SMTP password">
+            <label for="f-smtp-pass">Password</label>
+            <input id="f-smtp-pass" type="password">
           </div>
         </div>
       </div>
 
-      <div id="config-error" class="alert alert-error" style="display:none;"></div>
+      <div id="config-alert" class="alert alert-error" style="display:none"></div>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goStep(0)">Back</button>
-        <button class="btn btn-primary" id="btn-next-1">Continue</button>
+        <button class="btn btn-ghost" onclick="go(0)">Back</button>
+        <button class="btn btn-primary" id="btn-step1">Continue</button>
       </div>
     </div>
 
-    <!-- Step 3: Review -->
-    <div class="panel" id="step-2">
-      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Review Configuration</h2>
-      <table class="summary-table" id="review-table"></table>
-      <div class="alert alert-warn" style="margin-top:1rem;">
-        This will generate <strong>.env.local</strong>, pull Docker images, and start all services. This may take several minutes.
+    <!-- Step 2: Review -->
+    <div class="panel" id="panel-2">
+      <p class="panel-title">Review</p>
+      <table class="review-table" id="review"></table>
+      <div class="alert alert-warn">
+        This will generate configuration files, pull Docker images, build and start all services. This may take several minutes.
       </div>
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goStep(1)">Back</button>
+        <button class="btn btn-ghost" onclick="go(1)">Back</button>
         <button class="btn btn-primary" id="btn-install">Install Now</button>
       </div>
     </div>
 
-    <!-- Step 4: Progress -->
-    <div class="panel" id="step-3">
-      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Installing...</h2>
-      <ul class="progress-list" id="progress-list"></ul>
-      <div class="log-box" id="log-box"></div>
+    <!-- Step 3: Progress -->
+    <div class="panel" id="panel-3">
+      <p class="panel-title">Installing</p>
+      <ul class="phase-list" id="phases"></ul>
+      <div class="log-box" id="logbox"></div>
     </div>
 
-    <!-- Step 5: Complete -->
-    <div class="panel" id="step-4">
-      <div id="result-success" style="display:none;">
-        <div class="banner success">
-          <h2>Installation Complete!</h2>
+    <!-- Step 4: Complete -->
+    <div class="panel" id="panel-4">
+      <div id="done-ok" style="display:none">
+        <div class="banner banner-success">
+          <h2>Installation Complete</h2>
           <p>Reply Botz HD is up and running.</p>
         </div>
-        <div class="info-box">
-          <div class="info-label">Application</div>
-          <div class="info-row"><span>URL</span><a id="result-url" class="info-val" href="#" target="_blank"></a></div>
-          <div class="info-row"><span>Health Check</span><span class="info-val" id="result-health"></span></div>
+        <div class="info-card">
+          <div class="info-card-title">Application</div>
+          <div class="info-row"><span>URL</span><span class="info-val"><a id="d-url" href="#" target="_blank"></a></span></div>
+          <div class="info-row"><span>Health</span><span class="info-val" id="d-health"></span></div>
         </div>
-        <div class="info-box">
-          <div class="info-label">Login Credentials</div>
-          <div class="info-row"><span>Email</span><span class="info-val" id="result-email"></span></div>
-          <div class="info-row"><span>Password</span><span class="info-val" id="result-pass"></span></div>
+        <div class="info-card">
+          <div class="info-card-title">Login</div>
+          <div class="info-row"><span>Email</span><span class="info-val" id="d-email"></span></div>
+          <div class="info-row"><span>Password</span><span class="info-val" id="d-pass"></span></div>
           <div class="info-row"><span>Tenant</span><span class="info-val">system</span></div>
         </div>
-        <div class="info-box" id="result-monitoring-box" style="display:none;">
-          <div class="info-label">Monitoring</div>
+        <div class="info-card" id="d-monitoring" style="display:none">
+          <div class="info-card-title">Monitoring</div>
           <div class="info-row"><span>Grafana</span><span class="info-val">http://localhost:3001</span></div>
-          <div class="info-row"><span>Grafana Password</span><span class="info-val" id="result-grafana-pass"></span></div>
           <div class="info-row"><span>Prometheus</span><span class="info-val">http://localhost:9090</span></div>
         </div>
-        <p style="font-size:0.8rem; color:var(--text-muted); text-align:center; margin-top:1rem;">
-          This installer will shut down automatically in 60 seconds.
-        </p>
-        <div class="btn-row" style="justify-content:center;">
-          <a id="result-open-btn" class="btn btn-primary" href="#" target="_blank">Open Reply Botz HD</a>
+        <p class="muted">The installer will shut down automatically in 2 minutes.</p>
+        <div class="btn-row" style="justify-content:center">
+          <a id="d-open" class="btn btn-primary" href="#" target="_blank">Open Reply Botz HD</a>
         </div>
       </div>
-      <div id="result-error" style="display:none;">
-        <div class="banner error">
+      <div id="done-fail" style="display:none">
+        <div class="banner banner-error">
           <h2>Installation Failed</h2>
-          <p id="result-error-msg"></p>
+          <p id="d-error"></p>
         </div>
         <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goStep(1)">Back to Config</button>
+          <button class="btn btn-ghost" onclick="go(1)">Back to Config</button>
           <button class="btn btn-primary" onclick="location.reload()">Retry</button>
         </div>
       </div>
@@ -348,226 +365,251 @@
 </div>
 
 <script>
-(function() {
+(function () {
+  const Q = s => document.querySelector(s);
+  const QA = s => document.querySelectorAll(s);
   const TOKEN = new URLSearchParams(location.search).get('token') || '';
-  let currentStep = 0;
 
-  const PHASES = ['env', 'pull', 'start', 'health', 'database', 'complete'];
-  const PHASE_LABELS = {
-    env: 'Generate configuration',
-    pull: 'Pull Docker images',
-    start: 'Start services',
-    health: 'Health checks',
-    database: 'Database setup',
-    complete: 'Finalize',
-  };
+  let step = 0;
+  let config = {};
+  let serverIP = 'localhost';
 
-  function api(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + TOKEN; }
-
-  function goStep(n) {
-    currentStep = n;
-    document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
-    document.querySelectorAll('.step-dot').forEach((d, i) => {
-      d.classList.toggle('active', i === n);
-      d.classList.toggle('done', i < n);
-    });
+  function api(path) {
+    return path + (path.includes('?') ? '&' : '?') + 'token=' + TOKEN;
   }
 
-  // Step 1: Preflight
-  async function runPreflight() {
+  window.go = function (n) {
+    step = n;
+    QA('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
+    QA('.step-pip').forEach((p, i) => {
+      p.classList.toggle('active', i === n);
+      p.classList.toggle('done', i < n);
+    });
+  };
+
+  // SVGs
+  const ICO = {
+    pass: '<svg viewBox="0 0 16 16" fill="var(--green)"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm3.03 4.97a.75.75 0 00-1.06 0L7 8.94 5.53 7.47a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l3.5-3.5a.75.75 0 000-1.06z"/></svg>',
+    fail: '<svg viewBox="0 0 16 16" fill="var(--red)"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm2.03 3.97a.75.75 0 00-1.06 0L8 5.94 6.03 3.97a.75.75 0 00-1.06 1.06L6.94 7 4.97 8.97a.75.75 0 001.06 1.06L8 8.06l1.97 1.97a.75.75 0 001.06-1.06L9.06 7l1.97-1.97a.75.75 0 000-1.06z"/></svg>',
+    warn: '<svg viewBox="0 0 16 16" fill="var(--amber)"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 3a.75.75 0 00-.75.75v3.5a.75.75 0 001.5 0v-3.5A.75.75 0 008 4zm0 7a1 1 0 100-2 1 1 0 000 2z"/></svg>',
+    idle: '<svg viewBox="0 0 16 16" fill="var(--dim)"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  };
+
+  // Step 0: preflight
+  async function preflight() {
     try {
-      const res = await fetch(api('/api/preflight'));
-      const data = await res.json();
-      const list = document.getElementById('preflight-list');
+      const [checks, defaults] = await Promise.all([
+        fetch(api('/api/preflight')).then(r => r.json()),
+        fetch(api('/api/defaults')).then(r => r.json()),
+      ]);
+
+      serverIP = defaults.serverIP || 'localhost';
+
+      const list = Q('#checks');
       list.innerHTML = '';
-      data.checks.forEach(c => {
+
+      const entries = [
+        ['Docker', checks.docker],
+        ['Docker Compose', checks.compose],
+        ['Docker Daemon', checks.daemon],
+        ['Disk Space', checks.disk],
+        ['Memory', checks.memory],
+        ['Port 3000', checks.port3000],
+      ];
+
+      let allOk = true;
+      for (const [name, c] of entries) {
+        if (!c.ok) allOk = false;
         const li = document.createElement('li');
         li.className = 'check-item';
-        li.innerHTML = `
-          <span class="check-icon">${c.ok ? '<span style="color:var(--green)">&#10003;</span>' : '<span style="color:var(--red)">&#10007;</span>'}</span>
-          <span>${c.name}</span>
-          <span class="check-detail">${c.detail}</span>`;
+        li.innerHTML = `<span class="check-icon">${c.ok ? ICO.pass : ICO.fail}</span><span>${name}</span><span class="check-detail">${c.message}</span>`;
         list.appendChild(li);
-      });
-      document.getElementById('btn-next-0').disabled = !data.ready;
-      if (!data.ready) {
-        const errDiv = document.getElementById('preflight-error');
-        errDiv.style.display = 'block';
-        errDiv.textContent = 'Some prerequisites are not met. Please fix the issues above and refresh.';
+      }
+
+      if (checks.envExists && checks.envExists.exists) {
+        const li = document.createElement('li');
+        li.className = 'check-item';
+        li.innerHTML = `<span class="check-icon">${ICO.warn}</span><span>.env.local</span><span class="check-detail">Exists (will be overwritten)</span>`;
+        list.appendChild(li);
+      }
+
+      Q('#btn-step0').disabled = !allOk;
+      if (!allOk) {
+        const el = Q('#preflight-alert');
+        el.className = 'alert alert-error';
+        el.style.display = 'block';
+        el.textContent = 'Fix the issues above and refresh the page.';
       }
     } catch (e) {
-      document.getElementById('preflight-list').innerHTML =
-        '<li class="check-item"><span class="check-icon" style="color:var(--red)">&#10007;</span> Failed to connect to installer server</li>';
+      Q('#checks').innerHTML = `<li class="check-item"><span class="check-icon">${ICO.fail}</span><span>Cannot connect to installer</span></li>`;
     }
   }
 
-  document.getElementById('btn-next-0').onclick = () => goStep(1);
-  runPreflight();
+  Q('#btn-step0').onclick = () => go(1);
+  preflight();
 
-  // Monitoring toggle
-  document.getElementById('cfg-monitoring').onclick = function() { this.classList.toggle('on'); };
-
-  // SMTP collapsible
-  document.getElementById('smtp-toggle').onclick = function() {
-    const body = document.getElementById('smtp-body');
-    body.classList.toggle('open');
-    this.textContent = body.classList.contains('open') ? '- SMTP Settings (optional)' : '+ SMTP Settings (optional)';
+  // Step 1: config
+  Q('#smtp-btn').onclick = function () {
+    const s = Q('#smtp-section');
+    s.classList.toggle('open');
+    this.textContent = s.classList.contains('open') ? '- SMTP Settings (optional)' : '+ SMTP Settings (optional)';
   };
 
-  // Step 2: Validate & go to review
-  document.getElementById('btn-next-1').onclick = function() {
-    const errDiv = document.getElementById('config-error');
-    errDiv.style.display = 'none';
+  Q('#btn-step1').onclick = function () {
+    const alert = Q('#config-alert');
+    alert.style.display = 'none';
 
-    const url = document.getElementById('cfg-url').value.trim();
-    const email = document.getElementById('cfg-email').value.trim();
-    const password = document.getElementById('cfg-password').value;
+    const email = Q('#f-email').value.trim();
+    const pass = Q('#f-password').value;
 
-    if (!url) { errDiv.textContent = 'Application URL is required.'; errDiv.style.display = 'block'; return; }
-    if (!email || !email.includes('@')) { errDiv.textContent = 'A valid admin email is required.'; errDiv.style.display = 'block'; return; }
-    if (password.length > 0 && password.length < 8) { errDiv.textContent = 'Password must be at least 8 characters.'; errDiv.style.display = 'block'; return; }
+    if (!email || !email.includes('@')) {
+      alert.textContent = 'Valid admin email is required.';
+      alert.style.display = 'block';
+      return;
+    }
+    if (pass && pass.length < 8) {
+      alert.textContent = 'Password must be at least 8 characters.';
+      alert.style.display = 'block';
+      return;
+    }
 
-    // Build review table
-    const rows = [
-      ['Application URL', url],
-      ['Domain', document.getElementById('cfg-domain').value || 'replybotz.localhost'],
-      ['Mode', document.getElementById('cfg-mode').value === 'prod' ? 'Production' : 'Development'],
-      ['Monitoring', document.getElementById('cfg-monitoring').classList.contains('on') ? 'Enabled' : 'Disabled'],
-      ['Admin Email', email],
-      ['Admin Password', password ? '********' : '(default: Admin@123456)'],
-    ];
-    const smtp = document.getElementById('cfg-smtp-host').value.trim();
-    if (smtp) rows.push(['SMTP Host', smtp + ':' + (document.getElementById('cfg-smtp-port').value || '587')]);
-
-    const table = document.getElementById('review-table');
-    table.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-    goStep(2);
-  };
-
-  // Step 3: Install
-  document.getElementById('btn-install').onclick = function() {
-    this.disabled = true;
-    goStep(3);
-
-    const config = {
-      appUrl: document.getElementById('cfg-url').value.trim(),
-      domain: document.getElementById('cfg-domain').value.trim() || 'replybotz.localhost',
-      mode: document.getElementById('cfg-mode').value,
-      monitoring: document.getElementById('cfg-monitoring').classList.contains('on'),
-      adminEmail: document.getElementById('cfg-email').value.trim(),
-      adminPassword: document.getElementById('cfg-password').value || '',
-      smtpHost: document.getElementById('cfg-smtp-host').value.trim(),
-      smtpPort: document.getElementById('cfg-smtp-port').value,
-      smtpUser: document.getElementById('cfg-smtp-user').value.trim(),
-      smtpPass: document.getElementById('cfg-smtp-pass').value,
+    config = {
+      domain: Q('#f-domain').value.trim(),
+      mode: Q('#f-mode').value,
+      monitoring: Q('#f-monitoring').checked,
+      adminEmail: email,
+      adminPassword: pass,
+      smtpHost: Q('#f-smtp-host').value.trim(),
+      smtpPort: Q('#f-smtp-port').value,
+      smtpUser: Q('#f-smtp-user').value.trim(),
+      smtpPass: Q('#f-smtp-pass').value,
     };
 
-    const progressList = document.getElementById('progress-list');
-    const logBox = document.getElementById('log-box');
-    const phaseEls = {};
+    const appUrl = config.domain ? 'https://' + config.domain : 'http://' + serverIP + ':3000';
 
-    PHASES.forEach(phase => {
+    const rows = [
+      ['URL', appUrl],
+      ['Mode', config.mode === 'production' ? 'Production' : 'Development'],
+      ['Monitoring', config.monitoring ? 'Enabled' : 'Disabled'],
+      ['Admin', config.adminEmail],
+      ['Password', config.adminPassword ? '••••••••' : '(default)'],
+    ];
+    if (config.smtpHost) rows.push(['SMTP', config.smtpHost + ':' + (config.smtpPort || '587')]);
+
+    Q('#review').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+    go(2);
+  };
+
+  // Step 2 → 3: Install
+  const PHASE_META = [
+    { id: 'env', label: 'Generate configuration' },
+    { id: 'pull', label: 'Pull Docker images' },
+    { id: 'build', label: 'Build & start services' },
+    { id: 'health', label: 'Health checks' },
+    { id: 'migrate', label: 'Database setup' },
+  ];
+
+  Q('#btn-install').onclick = function () {
+    this.disabled = true;
+    go(3);
+
+    const phaseList = Q('#phases');
+    phaseList.innerHTML = '';
+    PHASE_META.forEach(p => {
       const li = document.createElement('li');
-      li.className = 'progress-item';
-      li.id = 'phase-' + phase;
-      li.innerHTML = `
-        <span class="progress-icon" id="icon-${phase}"><span style="color:var(--text-dim)">&#9675;</span></span>
-        <div>
-          <div id="label-${phase}">${PHASE_LABELS[phase]}</div>
-          <div class="progress-msg" id="msg-${phase}"></div>
-        </div>`;
-      progressList.appendChild(li);
-      phaseEls[phase] = li;
+      li.className = 'phase-item';
+      li.id = 'ph-' + p.id;
+      li.innerHTML = `<span class="phase-icon" id="phi-${p.id}">${ICO.idle}</span><div><div class="phase-label">${p.label}</div><div class="phase-msg" id="phm-${p.id}"></div></div>`;
+      phaseList.appendChild(li);
     });
+
+    const logbox = Q('#logbox');
+    logbox.textContent = '';
 
     fetch(api('/api/install'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
-    }).then(response => {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+    }).then(res => {
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
 
-      function read() {
+      function pump() {
         reader.read().then(({ done, value }) => {
           if (done) return;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-          lines.forEach(line => {
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
             if (line.startsWith('data: ')) {
-              try {
-                const evt = JSON.parse(line.slice(6));
-                handleEvent(evt);
-              } catch {}
+              try { handleSSE(JSON.parse(line.slice(6))); } catch {}
+            } else if (line.startsWith('event: ')) {
+              // handled via data line
             }
-          });
-          read();
+          }
+          pump();
         });
       }
-      read();
-    }).catch(err => {
-      showError('Connection to installer lost: ' + err.message);
-    });
+      pump();
+    }).catch(err => fail(err.message));
 
-    function handleEvent(evt) {
-      const { phase, status, message } = evt;
+    function handleSSE(d) {
+      const logbox = Q('#logbox');
 
-      if (phase === 'error') {
-        showError(message);
+      if (d.event === 'log' || d.text) {
+        logbox.textContent += (d.text || d.message || '') + '\n';
+        logbox.scrollTop = logbox.scrollHeight;
         return;
       }
 
-      if (phase === 'complete' && status === 'done') {
-        try {
-          const result = JSON.parse(message);
-          showSuccess(result, config);
-        } catch {
-          showSuccess({ appUrl: config.appUrl, adminEmail: config.adminEmail }, config);
-        }
+      if (d.event === 'error' || d.phase === 'error') {
+        fail(d.message);
         return;
       }
 
-      const icon = document.getElementById('icon-' + phase);
-      const msg = document.getElementById('msg-' + phase);
-      if (!icon || !msg) return;
+      if (d.event === 'complete') {
+        succeed(d);
+        return;
+      }
 
-      if (status === 'running') {
+      // progress event
+      const { phase, status, message } = d;
+      if (!phase) return;
+
+      const phaseId = phase;
+      const icon = Q('#phi-' + phaseId);
+      const msg = Q('#phm-' + phaseId);
+      if (!icon) return;
+
+      if (status === 'running' || status === 'checking') {
         icon.innerHTML = '<span class="spinner"></span>';
-        msg.textContent = message;
+        if (msg) msg.textContent = message || '';
       } else if (status === 'done') {
-        icon.innerHTML = '<span style="color:var(--green)">&#10003;</span>';
-        msg.textContent = message;
-      }
-
-      logBox.textContent += message + '\n';
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-
-    function showSuccess(result, config) {
-      goStep(4);
-      document.getElementById('result-success').style.display = 'block';
-      document.getElementById('result-url').href = result.appUrl;
-      document.getElementById('result-url').textContent = result.appUrl;
-      document.getElementById('result-health').textContent = result.appUrl + '/api/health';
-      document.getElementById('result-email').textContent = result.adminEmail;
-      document.getElementById('result-pass').textContent = config.adminPassword || 'Admin@123456';
-      document.getElementById('result-open-btn').href = result.appUrl;
-      if (result.monitoring) {
-        document.getElementById('result-monitoring-box').style.display = 'block';
-        document.getElementById('result-grafana-pass').textContent = result.grafanaPassword || '(auto-generated)';
+        icon.innerHTML = ICO.pass;
+        if (msg) msg.textContent = message || '';
       }
     }
 
-    function showError(message) {
-      goStep(4);
-      document.getElementById('result-error').style.display = 'block';
-      document.getElementById('result-error-msg').textContent = message;
+    function succeed(data) {
+      go(4);
+      Q('#done-ok').style.display = 'block';
+      const url = data.url || config.domain ? 'https://' + config.domain : 'http://' + serverIP + ':3000';
+      Q('#d-url').href = url;
+      Q('#d-url').textContent = url;
+      Q('#d-health').textContent = url + '/api/health';
+      Q('#d-email').textContent = (data.credentials && data.credentials.email) || config.adminEmail;
+      Q('#d-pass').textContent = config.adminPassword || 'Admin@123456';
+      Q('#d-open').href = url;
+      if (config.monitoring) Q('#d-monitoring').style.display = 'block';
+    }
+
+    function fail(message) {
+      go(4);
+      Q('#done-fail').style.display = 'block';
+      Q('#d-error').textContent = message;
     }
   };
-
-  window.goStep = goStep;
 })();
 </script>
 

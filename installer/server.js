@@ -1,55 +1,62 @@
 #!/usr/bin/env node
-'use strict';
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { spawn, execSync } = require('child_process');
-const net = require('net');
-const url = require('url');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { spawn, execSync } = require('node:child_process');
+const os = require('node:os');
+const net = require('node:net');
 
-const ROOT = path.resolve(__dirname, '..');
 const PORT = parseInt(process.env.INSTALLER_PORT || '4000', 10);
-const TOKEN = crypto.randomBytes(24).toString('hex');
+const TOKEN = process.env.INSTALLER_TOKEN || crypto.randomBytes(16).toString('hex');
+const ROOT = path.resolve(__dirname, '..');
+const ENV_FILE = path.join(ROOT, '.env.local');
 const LOCK_FILE = path.join(ROOT, '.installed');
-const FORCE = process.argv.includes('--force');
 
-let installState = { phase: 'idle', status: 'pending', log: [] };
+let installState = { status: 'idle', phase: null, log: [], error: null, appUrl: null };
+let installRunning = false;
+let sseClients = [];
 
-if (fs.existsSync(LOCK_FILE) && !FORCE) {
-  console.error('Reply Botz HD is already installed. Use --force to run the installer again.');
-  process.exit(1);
+// ── Utilities ──
+
+function generateSecret(bytes, encoding = 'base64') {
+  return crypto.randomBytes(bytes).toString(encoding);
 }
 
-function sendJSON(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(data));
-}
-
-function checkAuth(req, res) {
-  const parsed = url.parse(req.url, true);
-  if (parsed.query.token !== TOKEN) {
-    sendJSON(res, 403, { error: 'Invalid or missing access token' });
-    return false;
+function tryExec(cmd) {
+  try {
+    return { ok: true, output: execSync(cmd, { encoding: 'utf8', timeout: 10000 }).trim() };
+  } catch {
+    return { ok: false, output: '' };
   }
-  return true;
 }
 
-function readBody(req) {
+function sendSSE(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  installState.log.push({ event, ...data });
+  for (const res of sseClients) {
+    try { res.write(payload); } catch {}
+  }
+}
+
+function broadcastPhase(phase, step, status, message, extra = {}) {
+  if (status === 'running' || status === 'checking') {
+    installState.phase = phase;
+  }
+  sendSSE('progress', { phase, step, status, message, ...extra });
+}
+
+function parseBody(req) {
   return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-      catch { reject(new Error('Invalid JSON')); }
-    });
-    req.on('error', reject);
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; if (body.length > 1e6) reject(new Error('Too large')); });
+    req.on('end', () => { try { resolve(JSON.parse(body)); } catch { reject(new Error('Invalid JSON')); } });
   });
 }
 
-function isPortFree(port) {
-  return new Promise(resolve => {
+function checkPortAvailable(port) {
+  return new Promise((resolve) => {
     const srv = net.createServer();
     srv.once('error', () => resolve(false));
     srv.once('listening', () => { srv.close(); resolve(true); });
@@ -57,141 +64,118 @@ function isPortFree(port) {
   });
 }
 
-function cmdExists(cmd) {
-  try { execSync(`command -v ${cmd}`, { stdio: 'ignore' }); return true; }
-  catch { return false; }
+function getServerIP() {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) return alias.address;
+    }
+  }
+  return 'localhost';
 }
 
-function cmdOutput(cmd) {
-  try { return execSync(cmd, { encoding: 'utf8', timeout: 10000 }).trim(); }
-  catch { return null; }
-}
+// ── Preflight Checks ──
 
 async function runPreflight() {
-  const dockerInstalled = cmdExists('docker');
-  const dockerVersion = dockerInstalled ? cmdOutput('docker --version') : null;
+  const checks = {};
 
-  const composeInstalled = dockerInstalled && !!cmdOutput('docker compose version');
-  const composeVersion = composeInstalled ? cmdOutput('docker compose version --short') : null;
+  const docker = tryExec('docker --version');
+  checks.docker = { ok: docker.ok, version: docker.output.match(/(\d+\.\d+\.\d+)/)?.[1] || '', message: docker.ok ? `Docker ${docker.output.match(/(\d+\.\d+\.\d+)/)?.[1]} detected` : 'Docker is not installed' };
 
-  let daemonRunning = false;
-  if (dockerInstalled) {
-    try { execSync('docker info', { stdio: 'ignore', timeout: 10000 }); daemonRunning = true; }
-    catch { /* daemon not running */ }
-  }
+  const compose = tryExec('docker compose version --short');
+  checks.compose = { ok: compose.ok, version: compose.output, message: compose.ok ? `Docker Compose ${compose.output} detected` : 'Docker Compose V2 not available' };
 
-  const port3000Free = await isPortFree(3000);
+  const daemon = tryExec('docker info');
+  checks.daemon = { ok: daemon.ok, message: daemon.ok ? 'Docker daemon is running' : 'Docker daemon is not running' };
 
-  return {
-    checks: [
-      { name: 'Docker', ok: dockerInstalled, detail: dockerVersion || 'Not installed' },
-      { name: 'Docker Compose V2', ok: composeInstalled, detail: composeVersion || 'Not available' },
-      { name: 'Docker Daemon', ok: daemonRunning, detail: daemonRunning ? 'Running' : 'Not running' },
-      { name: 'Port 3000', ok: port3000Free, detail: port3000Free ? 'Available' : 'In use' },
-    ],
-    ready: dockerInstalled && composeInstalled && daemonRunning && port3000Free,
-  };
+  const diskRaw = tryExec("df -BG --output=avail . | tail -1");
+  const diskGB = parseInt(diskRaw.output) || 0;
+  checks.disk = { ok: diskGB >= 2, available: `${diskGB}GB`, message: diskGB >= 2 ? `${diskGB}GB available` : `Only ${diskGB}GB available (2GB minimum)` };
+
+  const memRaw = tryExec("free -m | awk '/Mem:/ {print $7}'");
+  const memMB = parseInt(memRaw.output) || 0;
+  const memGB = (memMB / 1024).toFixed(1);
+  checks.memory = { ok: memMB >= 512, available: `${memGB}GB`, message: memMB >= 512 ? `${memGB}GB available` : `Only ${memGB}GB available (512MB minimum)` };
+
+  const portFree = await checkPortAvailable(3000);
+  checks.port3000 = { ok: portFree, message: portFree ? 'Port 3000 is available' : 'Port 3000 is in use' };
+
+  checks.envExists = { ok: true, exists: fs.existsSync(ENV_FILE), message: fs.existsSync(ENV_FILE) ? '.env.local already exists (will be overwritten)' : '.env.local will be generated' };
+
+  return checks;
 }
 
-function genSecret(bytes, encoding) {
-  return crypto.randomBytes(bytes).toString(encoding);
-}
+// ── Installation Pipeline ──
 
-function runCmd(cmd, args, opts = {}) {
+function spawnAndStream(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+    const proc = spawn(command, args, { cwd: ROOT, ...options });
     let stdout = '', stderr = '';
-    proc.stdout.on('data', d => { stdout += d; });
-    proc.stderr.on('data', d => { stderr += d; });
-    proc.on('close', code => {
+
+    if (proc.stdout) {
+      proc.stdout.on('data', (data) => {
+        const line = data.toString();
+        stdout += line;
+        sendSSE('log', { text: line.trimEnd() });
+      });
+    }
+    if (proc.stderr) {
+      proc.stderr.on('data', (data) => {
+        const line = data.toString();
+        stderr += line;
+        sendSSE('log', { text: line.trimEnd() });
+      });
+    }
+
+    proc.on('close', (code) => {
       if (code === 0) resolve(stdout);
-      else reject(new Error(`${cmd} ${args.join(' ')} exited ${code}: ${stderr || stdout}`));
+      else reject(new Error(`Command exited with code ${code}: ${stderr.slice(-500)}`));
     });
     proc.on('error', reject);
   });
 }
 
-function streamCmd(cmd, args, emit, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], ...opts });
-    proc.stdout.on('data', d => {
-      d.toString().split('\n').filter(Boolean).forEach(line => emit(line));
-    });
-    proc.stderr.on('data', d => {
-      d.toString().split('\n').filter(Boolean).forEach(line => emit(line));
-    });
-    proc.on('close', code => {
-      if (code === 0) resolve();
-      else reject(new Error(`${cmd} exited with code ${code}`));
-    });
-    proc.on('error', reject);
-  });
-}
-
-async function healthCheck(composeFiles, service, check, timeoutSec, emit) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutSec * 1000) {
-    try {
-      await runCmd('docker', ['compose', ...composeFiles, 'exec', '-T', ...check]);
-      return true;
-    } catch { /* retry */ }
-    emit(`Waiting for ${service}...`);
-    await new Promise(r => setTimeout(r, 2000));
-  }
-  return false;
-}
-
-async function runInstall(config, res) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
-
-  function emit(phase, status, message) {
-    installState = { phase, status, log: [...installState.log, { phase, status, message }] };
-    res.write(`data: ${JSON.stringify({ phase, status, message })}\n\n`);
-  }
+async function runInstall(config) {
+  if (installRunning) throw new Error('Installation already in progress');
+  installRunning = true;
+  installState = { status: 'running', phase: 'env', log: [], error: null, appUrl: null };
 
   try {
-    // Phase 1: Generate secrets and write .env.local
-    emit('env', 'running', 'Generating secure configuration...');
+    // Phase 1: Generate .env.local
+    broadcastPhase('env', 'generate', 'running', 'Generating configuration...');
 
-    const secrets = {
-      JWT_SECRET: genSecret(48, 'base64'),
-      ENCRYPTION_KEY: genSecret(32, 'hex'),
-      POSTGRES_PASSWORD: genSecret(24, 'base64url'),
-      REDIS_PASSWORD: genSecret(24, 'base64url'),
-      MEILI_MASTER_KEY: genSecret(24, 'base64url'),
-      GRAFANA_PASSWORD: genSecret(16, 'base64url'),
-    };
+    const jwtSecret = generateSecret(48, 'base64');
+    const encryptionKey = generateSecret(32, 'hex');
+    const postgresPassword = generateSecret(24, 'base64url').slice(0, 24);
+    const redisPassword = generateSecret(24, 'base64url').slice(0, 24);
+    const meiliMasterKey = generateSecret(24, 'base64url').slice(0, 24);
+    const grafanaPassword = generateSecret(16, 'base64url').slice(0, 16);
 
-    const mode = config.mode || 'prod';
-    const appUrl = config.appUrl || 'http://localhost:3000';
-    const domain = config.domain || 'replybotz.localhost';
-    const adminEmail = config.adminEmail || 'admin@replybotz.com';
-    const adminPassword = config.adminPassword || 'Admin@123456';
+    const mode = config.mode || 'production';
+    const nodeEnv = mode === 'development' ? 'development' : 'production';
+    const appUrl = config.domain ? `https://${config.domain}` : `http://${getServerIP()}:3000`;
 
     const envContent = `# ===========================================
 # Reply Botz HD - Generated Configuration
 # Generated on: ${new Date().toISOString()}
+# Generated by: GUI Installer
 # ===========================================
 
 # App
-NODE_ENV=${mode === 'dev' ? 'development' : 'production'}
+NODE_ENV=${nodeEnv}
 NEXT_PUBLIC_APP_URL=${appUrl}
-NEXT_PUBLIC_APP_DOMAIN=${domain}
+NEXT_PUBLIC_APP_DOMAIN=${config.domain || `${getServerIP()}`}
 
 # Database (PostgreSQL)
-DATABASE_URL=postgresql://replybotz:${secrets.POSTGRES_PASSWORD}@postgres:5432/replybotz
-POSTGRES_PASSWORD=${secrets.POSTGRES_PASSWORD}
+DATABASE_URL=postgresql://replybotz:${postgresPassword}@postgres:5432/replybotz
+POSTGRES_PASSWORD=${postgresPassword}
 
 # Redis
-REDIS_URL=redis://:${secrets.REDIS_PASSWORD}@redis:6379
-REDIS_PASSWORD=${secrets.REDIS_PASSWORD}
+REDIS_URL=redis://:${redisPassword}@redis:6379
+REDIS_PASSWORD=${redisPassword}
 
-# Auth (JWT) - Auto-generated secure secret
-JWT_SECRET=${secrets.JWT_SECRET}
+# Auth (JWT)
+JWT_SECRET=${jwtSecret}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 
@@ -202,194 +186,277 @@ ARGON2_TIME_COST=3
 # MFA (TOTP)
 MFA_ISSUER=ReplyBotzHD
 
-# Encryption (AES-256-GCM) - Auto-generated secure key
-ENCRYPTION_KEY=${secrets.ENCRYPTION_KEY}
+# Encryption (AES-256-GCM)
+ENCRYPTION_KEY=${encryptionKey}
 
 # Meilisearch
 MEILI_URL=http://meilisearch:7700
-MEILI_MASTER_KEY=${secrets.MEILI_MASTER_KEY}
+MEILI_MASTER_KEY=${meiliMasterKey}
 
 # Monitoring
-GRAFANA_PASSWORD=${secrets.GRAFANA_PASSWORD}
+GRAFANA_PASSWORD=${grafanaPassword}
 
 # Logging
 LOG_LEVEL=info
 
 # Tenant Resolution
 TENANT_RESOLUTION_MODE=subdomain
-
-# Seed Admin (set by GUI installer)
-SEED_ADMIN_EMAIL=${adminEmail}
-SEED_ADMIN_PASSWORD=${adminPassword}
+${config.adminEmail ? `\n# Seed Admin\nSEED_ADMIN_EMAIL=${config.adminEmail}` : ''}
+${config.adminPassword ? `SEED_ADMIN_PASSWORD=${config.adminPassword}` : ''}
+${config.smtpHost ? `
+# SMTP
+SMTP_HOST=${config.smtpHost}
+SMTP_PORT=${config.smtpPort || '587'}
+SMTP_USER=${config.smtpUser || ''}
+SMTP_PASS=${config.smtpPass || ''}
+SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
 `;
 
-    fs.writeFileSync(path.join(ROOT, '.env.local'), envContent, 'utf8');
-    emit('env', 'done', '.env.local generated with secure secrets');
+    fs.writeFileSync(ENV_FILE, envContent, 'utf8');
+    broadcastPhase('env', 'generate', 'done', 'Configuration generated');
 
-    // Phase 2: Docker Compose pull
-    emit('pull', 'running', 'Pulling Docker images...');
-    const composeArgs = ['-f', 'docker-compose.yml'];
-    if (mode === 'dev') composeArgs.push('-f', 'docker-compose.dev.yml');
-    const profileArgs = config.monitoring ? ['--profile', 'monitoring'] : [];
+    // Phase 2: Pull images
+    broadcastPhase('pull', 'images', 'running', 'Pulling Docker images...');
+    const composeFiles = ['-f', 'docker-compose.yml'];
+    const profiles = [];
+    if (config.monitoring) profiles.push('--profile', 'monitoring');
 
-    await streamCmd('docker', ['compose', ...composeArgs, 'pull'], msg => {
-      emit('pull', 'running', msg);
-    });
-    emit('pull', 'done', 'Docker images pulled');
+    try {
+      await spawnAndStream('docker', ['compose', ...composeFiles, 'pull'], { env: { ...process.env, COMPOSE_FILE: '' } });
+    } catch {
+      sendSSE('log', { text: 'Some images could not be pulled (will build from source)' });
+    }
+    broadcastPhase('pull', 'images', 'done', 'Docker images ready');
 
-    // Phase 3: Build and start services
-    emit('start', 'running', 'Building and starting services...');
-    await streamCmd('docker', ['compose', ...composeArgs, ...profileArgs, 'up', '-d', '--build'], msg => {
-      emit('start', 'running', msg);
-    });
-    emit('start', 'done', 'Services started');
+    // Phase 3: Build and start
+    broadcastPhase('build', 'start', 'running', 'Building and starting services...');
+    await spawnAndStream('docker', ['compose', ...composeFiles, ...profiles, 'up', '-d', '--build']);
+    broadcastPhase('build', 'start', 'done', 'Services started');
 
     // Phase 4: Health checks
-    emit('health', 'running', 'Waiting for services to be healthy...');
-
-    const pgOk = await healthCheck(composeArgs, 'PostgreSQL',
-      ['postgres', 'pg_isready', '-U', 'replybotz', '-d', 'replybotz'], 30,
-      msg => emit('health', 'running', msg));
-    if (!pgOk) throw new Error('PostgreSQL failed to start within 30s');
-    emit('health', 'running', 'PostgreSQL is ready');
-
-    const redisOk = await healthCheck(composeArgs, 'Redis',
-      ['redis', 'redis-cli', 'ping'], 15,
-      msg => emit('health', 'running', msg));
-    if (!redisOk) throw new Error('Redis failed to start within 15s');
-    emit('health', 'running', 'Redis is ready');
-
-    let appOk = false;
-    const appStart = Date.now();
-    while (Date.now() - appStart < 120000) {
-      try {
-        await runCmd('curl', ['-sf', 'http://localhost:3000/api/health']);
-        appOk = true;
-        break;
-      } catch { /* retry */ }
-      emit('health', 'running', 'Waiting for application...');
-      await new Promise(r => setTimeout(r, 3000));
+    broadcastPhase('health', 'postgres', 'checking', 'Waiting for PostgreSQL...');
+    for (let i = 0; i < 30; i++) {
+      const pg = tryExec(`docker compose ${composeFiles.join(' ')} exec -T postgres pg_isready -U replybotz -d replybotz`);
+      if (pg.ok) break;
+      if (i === 29) throw new Error('PostgreSQL failed to start within 30 seconds');
+      await new Promise(r => setTimeout(r, 1000));
     }
-    if (!appOk) throw new Error('Application failed to start within 120s');
-    emit('health', 'done', 'All services are healthy');
+    broadcastPhase('health', 'postgres', 'done', 'PostgreSQL is ready');
 
-    // Phase 5: Database migrations + seed
-    emit('database', 'running', 'Running database migrations...');
-    if (mode === 'dev') {
-      await streamCmd('docker', ['compose', ...composeArgs, 'exec', '-T', 'app',
-        'sh', '-c', 'npx prisma migrate dev --name init 2>/dev/null || npx prisma db push'],
-        msg => emit('database', 'running', msg));
-    } else {
-      await streamCmd('docker', ['compose', ...composeArgs, 'exec', '-T', 'app',
-        'sh', '-c', 'npx prisma migrate deploy 2>/dev/null || npx prisma db push'],
-        msg => emit('database', 'running', msg));
+    broadcastPhase('health', 'redis', 'checking', 'Waiting for Redis...');
+    for (let i = 0; i < 15; i++) {
+      const rd = tryExec(`docker compose ${composeFiles.join(' ')} exec -T redis redis-cli ping`);
+      if (rd.ok && rd.output.includes('PONG')) break;
+      if (i === 14) throw new Error('Redis failed to start within 15 seconds');
+      await new Promise(r => setTimeout(r, 1000));
     }
-    emit('database', 'running', 'Seeding database...');
-    await streamCmd('docker', ['compose', ...composeArgs, 'exec', '-T', 'app',
-      'npx', 'prisma', 'db', 'seed'],
-      msg => emit('database', 'running', msg));
-    emit('database', 'done', 'Database setup complete');
+    broadcastPhase('health', 'redis', 'done', 'Redis is ready');
+
+    broadcastPhase('health', 'app', 'checking', 'Waiting for application...');
+    for (let i = 0; i < 60; i++) {
+      const app = tryExec('curl -sf http://localhost:3000/api/health');
+      if (app.ok) break;
+      if (i === 59) throw new Error('Application failed to start within 120 seconds');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    broadcastPhase('health', 'app', 'done', 'Application is ready');
+
+    // Phase 5: Migrations and seed
+    broadcastPhase('migrate', 'run', 'running', 'Running database migrations...');
+    const migrateCmd = mode === 'development' ? 'npx prisma migrate dev --name init' : 'npx prisma migrate deploy';
+    try {
+      await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'sh', '-c', migrateCmd]);
+    } catch {
+      sendSSE('log', { text: 'Migrate command failed, trying db push...' });
+      await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'npx', 'prisma', 'db', 'push']);
+    }
+    broadcastPhase('migrate', 'run', 'done', 'Database migrations complete');
+
+    broadcastPhase('migrate', 'seed', 'running', 'Seeding database...');
+    await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'npx', 'prisma', 'db', 'seed']);
+    broadcastPhase('migrate', 'seed', 'done', 'Database seeded');
 
     // Done
+    installState.status = 'complete';
+    installState.appUrl = appUrl;
+    const loginEmail = config.adminEmail || 'admin@replybotz.com';
+    const loginPassword = config.adminPassword || 'Admin@123456';
+
+    sendSSE('complete', {
+      url: appUrl,
+      credentials: { email: loginEmail, password: loginPassword, tenant: 'system' },
+      services: {
+        app: appUrl,
+        health: `${appUrl}/api/health`,
+        meilisearch: 'http://localhost:7700',
+        ...(config.monitoring ? { grafana: 'http://localhost:3001', prometheus: 'http://localhost:9090' } : {}),
+      },
+    });
+
     fs.writeFileSync(LOCK_FILE, new Date().toISOString(), 'utf8');
 
-    const result = {
-      appUrl,
-      adminEmail,
-      monitoring: !!config.monitoring,
-      grafanaPassword: secrets.GRAFANA_PASSWORD,
-    };
-    emit('complete', 'done', JSON.stringify(result));
-
+    // Auto-shutdown after 120 seconds
     setTimeout(() => {
-      console.log('\nInstaller shutting down automatically...');
+      console.log('\nInstaller shutting down. Reply Botz HD is running at ' + appUrl);
       process.exit(0);
-    }, 60000);
+    }, 120000);
 
   } catch (err) {
-    emit('error', 'error', err.message);
+    installState.status = 'error';
+    installState.error = err.message;
+    sendSSE('error', { message: err.message });
+  } finally {
+    installRunning = false;
   }
+}
 
-  res.end();
+// ── HTTP Server ──
+
+const MIME = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json',
+};
+
+function verifyToken(req) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const urlToken = url.searchParams.get('token');
+  const cookieToken = (req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith('installer_token='))?.split('=')?.[1];
+  return urlToken === TOKEN || cookieToken === TOKEN;
+}
+
+function sendJSON(res, status, data) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify(data));
 }
 
 const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
-  const pathname = parsed.pathname;
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+  // CORS preflight
   if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST', 'Access-Control-Allow-Headers': 'Content-Type' });
+    return res.end();
   }
 
-  if (pathname === '/' && req.method === 'GET') {
-    if (!checkAuth(req, res)) return;
-    const htmlPath = path.join(__dirname, 'index.html');
-    try {
-      const html = fs.readFileSync(htmlPath, 'utf8');
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(html);
-    } catch {
-      sendJSON(res, 500, { error: 'index.html not found' });
-    }
-    return;
+  // Token check (except for static files on root with valid token)
+  if (!verifyToken(req)) {
+    return sendJSON(res, 403, { error: 'Invalid or missing access token' });
   }
+
+  // Set token cookie so subsequent requests don't need the query param
+  if (url.searchParams.get('token') === TOKEN) {
+    res.setHeader('Set-Cookie', `installer_token=${TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
+  }
+
+  // ── API Routes ──
 
   if (pathname === '/api/preflight' && req.method === 'GET') {
-    if (!checkAuth(req, res)) return;
-    const result = await runPreflight();
-    sendJSON(res, 200, result);
-    return;
+    const checks = await runPreflight();
+    return sendJSON(res, 200, checks);
+  }
+
+  if (pathname === '/api/defaults' && req.method === 'GET') {
+    return sendJSON(res, 200, { serverIP: getServerIP() });
   }
 
   if (pathname === '/api/install' && req.method === 'POST') {
-    if (!checkAuth(req, res)) return;
-    if (installState.phase !== 'idle' && installState.phase !== 'error') {
-      sendJSON(res, 409, { error: 'Installation already in progress' });
-      return;
-    }
-    try {
-      const config = await readBody(req);
-      await runInstall(config, res);
-    } catch (err) {
-      sendJSON(res, 400, { error: err.message });
-    }
+    if (installRunning) return sendJSON(res, 409, { error: 'Installation already in progress' });
+
+    let config;
+    try { config = await parseBody(req); } catch { return sendJSON(res, 400, { error: 'Invalid request body' }); }
+
+    // SSE response
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    sseClients.push(res);
+    req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
+
+    runInstall(config);
     return;
   }
 
   if (pathname === '/api/status' && req.method === 'GET') {
-    if (!checkAuth(req, res)) return;
-    sendJSON(res, 200, installState);
+    return sendJSON(res, 200, installState);
+  }
+
+  if (pathname === '/api/events' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Replay existing log
+    for (const entry of installState.log) {
+      const event = entry.event || 'progress';
+      res.write(`event: ${event}\ndata: ${JSON.stringify(entry)}\n\n`);
+    }
+
+    sseClients.push(res);
+    req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
     return;
   }
 
   if (pathname === '/api/shutdown' && req.method === 'POST') {
-    if (!checkAuth(req, res)) return;
     sendJSON(res, 200, { message: 'Shutting down...' });
-    setTimeout(() => process.exit(0), 500);
+    setTimeout(() => process.exit(0), 1000);
     return;
   }
 
-  sendJSON(res, 404, { error: 'Not found' });
+  // ── Static Files ──
+
+  let filePath;
+  if (pathname === '/' || pathname === '/index.html') {
+    filePath = path.join(__dirname, 'index.html');
+  } else {
+    const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
+    filePath = path.join(__dirname, safePath);
+  }
+
+  if (!filePath.startsWith(__dirname)) {
+    return sendJSON(res, 403, { error: 'Forbidden' });
+  }
+
+  try {
+    const content = fs.readFileSync(filePath);
+    const ext = path.extname(filePath);
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    res.end(content);
+  } catch {
+    sendJSON(res, 404, { error: 'Not found' });
+  }
 });
 
+// ── Startup ──
+
+if (fs.existsSync(LOCK_FILE) && !process.argv.includes('--force')) {
+  console.log('Reply Botz HD is already installed.');
+  console.log('To re-run the installer, use: node installer/server.js --force');
+  process.exit(0);
+}
+
 server.listen(PORT, '0.0.0.0', () => {
+  const ip = getServerIP();
   console.log('');
-  console.log('  ┌──────────────────────────────────────────────┐');
-  console.log('  │     Reply Botz HD — GUI Installer            │');
-  console.log('  └──────────────────────────────────────────────┘');
+  console.log('  ╔══════════════════════════════════════════════════╗');
+  console.log('  ║  Reply Botz HD - GUI Installer                  ║');
+  console.log('  ║                                                  ║');
+  console.log('  ║  Open this URL in your browser:                  ║');
+  console.log(`  ║  http://${ip}:${PORT}?token=${TOKEN}`);
+  console.log('  ║                                                  ║');
+  console.log('  ║  This token is required for access.              ║');
+  console.log('  ╚══════════════════════════════════════════════════╝');
   console.log('');
-  console.log(`  Open in your browser:`);
-  console.log(`  http://localhost:${PORT}/?token=${TOKEN}`);
-  console.log('');
-  console.log(`  Or from your VPS public IP:`);
-  console.log(`  http://<your-server-ip>:${PORT}/?token=${TOKEN}`);
-  console.log('');
-  console.log('  The access token above is required. Do not share it.');
+  console.log(`  Local:   http://localhost:${PORT}?token=${TOKEN}`);
   console.log('');
 });
