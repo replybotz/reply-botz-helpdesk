@@ -44,6 +44,15 @@ for arg in "$@"; do
       fi
       exit 0
       ;;
+    --gui)
+      echo -e "${CYAN}Launching GUI installer...${NC}"
+      if ! command -v node &>/dev/null; then
+        echo -e "${RED}Error: Node.js is required for the GUI installer.${NC}"
+        echo "Install Node.js 20+: https://nodejs.org/"
+        exit 1
+      fi
+      exec node "$(dirname "$0")/installer/server.js"
+      ;;
     --help|-h)
       echo "Usage: ./install.sh [OPTIONS]"
       echo ""
@@ -51,6 +60,7 @@ for arg in "$@"; do
       echo "  --dev          Development mode (hot reload, no nginx/ssl)"
       echo "  --prod         Production mode (default)"
       echo "  --monitoring   Include Prometheus + Grafana + Loki"
+      echo "  --gui          Launch browser-based GUI installer"
       echo "  --down         Stop all services"
       echo "  --reset        Stop services and destroy all data"
       echo "  -h, --help     Show this help"

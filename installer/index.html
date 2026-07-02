@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reply Botz HD — Installer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #fafafa; --bg-card: #ffffff; --border: #e4e4e7;
+    --text: #18181b; --text-muted: #71717a; --text-dim: #a1a1aa;
+    --accent: #18181b; --accent-hover: #3f3f46;
+    --green: #16a34a; --green-bg: #f0fdf4;
+    --red: #dc2626; --red-bg: #fef2f2;
+    --yellow: #ca8a04; --yellow-bg: #fefce8;
+    --blue: #2563eb; --blue-bg: #eff6ff;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #09090b; --bg-card: #18181b; --border: #27272a;
+      --text: #fafafa; --text-muted: #a1a1aa; --text-dim: #52525b;
+      --accent: #f4f4f5; --accent-hover: #d4d4d8;
+      --green: #4ade80; --green-bg: rgba(34,197,94,0.1);
+      --red: #f87171; --red-bg: rgba(239,68,68,0.1);
+      --yellow: #facc15; --yellow-bg: rgba(234,179,8,0.1);
+      --blue: #60a5fa; --blue-bg: rgba(59,130,246,0.1);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+
+  .container { width: 100%; max-width: 640px; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 0.75rem; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  h1 { font-size: 1.5rem; font-weight: 700; text-align: center; }
+  .subtitle { text-align: center; color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem; }
+
+  .steps {
+    display: flex; gap: 0.5rem; justify-content: center; margin: 1.5rem 0;
+  }
+  .step-dot {
+    width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 0.75rem; font-weight: 600;
+    border: 2px solid var(--border); color: var(--text-dim); transition: all 0.2s;
+  }
+  .step-dot.active { border-color: var(--accent); color: var(--accent); background: var(--bg); }
+  .step-dot.done { border-color: var(--green); color: white; background: var(--green); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .check-list { list-style: none; margin: 1rem 0; }
+  .check-item {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0;
+    border-bottom: 1px solid var(--border); font-size: 0.875rem;
+  }
+  .check-item:last-child { border-bottom: none; }
+  .check-icon { width: 1.25rem; text-align: center; font-size: 1rem; flex-shrink: 0; }
+  .check-detail { color: var(--text-muted); margin-left: auto; font-size: 0.8rem; }
+
+  label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; }
+  input, select {
+    width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border);
+    border-radius: 0.5rem; font-size: 0.875rem; background: var(--bg);
+    color: var(--text); outline: none; transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .field { margin-bottom: 1rem; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .field-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 0; border-bottom: 1px solid var(--border);
+  }
+  .toggle-label { font-size: 0.875rem; font-weight: 500; }
+  .toggle-desc { font-size: 0.75rem; color: var(--text-muted); }
+  .toggle {
+    width: 2.5rem; height: 1.375rem; border-radius: 999px; border: none;
+    background: var(--border); cursor: pointer; position: relative; transition: background 0.2s;
+  }
+  .toggle.on { background: var(--green); }
+  .toggle::after {
+    content: ''; position: absolute; width: 1rem; height: 1rem; border-radius: 50%;
+    background: white; top: 3px; left: 3px; transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(1.1rem); }
+
+  .collapsible-trigger {
+    font-size: 0.875rem; color: var(--blue); cursor: pointer; background: none;
+    border: none; padding: 0.5rem 0; font-weight: 500;
+  }
+  .collapsible-body { display: none; margin-top: 0.5rem; }
+  .collapsible-body.open { display: block; }
+
+  .summary-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .summary-table td {
+    padding: 0.5rem 0; border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  .summary-table td:first-child { font-weight: 500; width: 40%; color: var(--text-muted); }
+
+  .progress-list { list-style: none; margin: 1rem 0; }
+  .progress-item {
+    display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0;
+    font-size: 0.875rem;
+  }
+  .progress-icon { width: 1.25rem; text-align: center; flex-shrink: 0; margin-top: 0.1rem; }
+  .progress-msg { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.125rem; word-break: break-word; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 1rem; height: 1rem; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.6s linear infinite; display: inline-block;
+  }
+
+  .log-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+    padding: 0.75rem; max-height: 200px; overflow-y: auto; font-family: monospace;
+    font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem; white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .banner {
+    text-align: center; padding: 1.5rem; border-radius: 0.5rem; margin: 1rem 0;
+  }
+  .banner.success { background: var(--green-bg); color: var(--green); }
+  .banner.error { background: var(--red-bg); color: var(--red); }
+  .banner h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+
+  .info-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem;
+    padding: 1rem; margin: 1rem 0; font-size: 0.875rem;
+  }
+  .info-box .info-label { font-weight: 600; margin-bottom: 0.25rem; }
+  .info-box .info-row { display: flex; justify-content: space-between; padding: 0.25rem 0; }
+  .info-box .info-val { color: var(--text-muted); font-family: monospace; font-size: 0.8rem; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0.625rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem;
+    font-weight: 500; border: none; cursor: pointer; transition: all 0.15s;
+    text-decoration: none;
+  }
+  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--bg); }
+
+  .btn-row { display: flex; justify-content: space-between; margin-top: 1.5rem; }
+
+  .alert {
+    padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; margin: 1rem 0;
+  }
+  .alert-error { background: var(--red-bg); color: var(--red); }
+  .alert-warn { background: var(--yellow-bg); color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <h1>Reply Botz HD</h1>
+    <p class="subtitle">Installation Wizard</p>
+
+    <div class="steps">
+      <div class="step-dot active" data-step="0">1</div>
+      <div class="step-dot" data-step="1">2</div>
+      <div class="step-dot" data-step="2">3</div>
+      <div class="step-dot" data-step="3">4</div>
+      <div class="step-dot" data-step="4">5</div>
+    </div>
+
+    <!-- Step 1: Welcome + Preflight -->
+    <div class="panel active" id="step-0">
+      <h2 style="font-size:1.125rem; margin-bottom:0.5rem;">Welcome</h2>
+      <p style="font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem;">
+        This wizard will set up Reply Botz HD on your server. Let's check that everything is ready.
+      </p>
+      <ul class="check-list" id="preflight-list">
+        <li class="check-item"><span class="check-icon"><span class="spinner"></span></span> Running checks...</li>
+      </ul>
+      <div id="preflight-error" class="alert alert-error" style="display:none;"></div>
+      <div class="btn-row">
+        <span></span>
+        <button class="btn btn-primary" id="btn-next-0" disabled>Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Configuration -->
+    <div class="panel" id="step-1">
+      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Configuration</h2>
+
+      <div class="field">
+        <label for="cfg-url">Application URL</label>
+        <input id="cfg-url" type="url" value="http://localhost:3000" placeholder="https://helpdesk.example.com">
+        <p class="field-hint">The public URL where users will access Reply Botz HD</p>
+      </div>
+
+      <div class="field">
+        <label for="cfg-domain">Domain</label>
+        <input id="cfg-domain" type="text" value="replybotz.localhost" placeholder="helpdesk.example.com">
+        <p class="field-hint">Used for tenant subdomain resolution</p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="cfg-mode">Mode</label>
+          <select id="cfg-mode">
+            <option value="prod">Production</option>
+            <option value="dev">Development</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <div class="toggle-row" style="border:none; padding:0.5rem 0;">
+            <div>
+              <div class="toggle-label">Monitoring</div>
+              <div class="toggle-desc">Prometheus + Grafana</div>
+            </div>
+            <button class="toggle" id="cfg-monitoring" type="button" aria-label="Toggle monitoring"></button>
+          </div>
+        </div>
+      </div>
+
+      <hr style="border:none; border-top:1px solid var(--border); margin:1rem 0;">
+
+      <h3 style="font-size:1rem; margin-bottom:0.75rem;">Admin Account</h3>
+      <div class="field">
+        <label for="cfg-email">Admin Email</label>
+        <input id="cfg-email" type="email" value="admin@replybotz.com" placeholder="admin@example.com">
+      </div>
+      <div class="field">
+        <label for="cfg-password">Admin Password</label>
+        <input id="cfg-password" type="password" placeholder="Minimum 8 characters">
+        <p class="field-hint">Choose a strong password for the super admin account</p>
+      </div>
+
+      <button class="collapsible-trigger" id="smtp-toggle" type="button">+ SMTP Settings (optional)</button>
+      <div class="collapsible-body" id="smtp-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="cfg-smtp-host">SMTP Host</label>
+            <input id="cfg-smtp-host" type="text" placeholder="smtp.example.com">
+          </div>
+          <div class="field">
+            <label for="cfg-smtp-port">Port</label>
+            <input id="cfg-smtp-port" type="number" value="587" placeholder="587">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cfg-smtp-user">Username</label>
+            <input id="cfg-smtp-user" type="text" placeholder="user@example.com">
+          </div>
+          <div class="field">
+            <label for="cfg-smtp-pass">Password</label>
+            <input id="cfg-smtp-pass" type="password" placeholder="SMTP password">
+          </div>
+        </div>
+      </div>
+
+      <div id="config-error" class="alert alert-error" style="display:none;"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(0)">Back</button>
+        <button class="btn btn-primary" id="btn-next-1">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Review -->
+    <div class="panel" id="step-2">
+      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Review Configuration</h2>
+      <table class="summary-table" id="review-table"></table>
+      <div class="alert alert-warn" style="margin-top:1rem;">
+        This will generate <strong>.env.local</strong>, pull Docker images, and start all services. This may take several minutes.
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(1)">Back</button>
+        <button class="btn btn-primary" id="btn-install">Install Now</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Progress -->
+    <div class="panel" id="step-3">
+      <h2 style="font-size:1.125rem; margin-bottom:1rem;">Installing...</h2>
+      <ul class="progress-list" id="progress-list"></ul>
+      <div class="log-box" id="log-box"></div>
+    </div>
+
+    <!-- Step 5: Complete -->
+    <div class="panel" id="step-4">
+      <div id="result-success" style="display:none;">
+        <div class="banner success">
+          <h2>Installation Complete!</h2>
+          <p>Reply Botz HD is up and running.</p>
+        </div>
+        <div class="info-box">
+          <div class="info-label">Application</div>
+          <div class="info-row"><span>URL</span><a id="result-url" class="info-val" href="#" target="_blank"></a></div>
+          <div class="info-row"><span>Health Check</span><span class="info-val" id="result-health"></span></div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">Login Credentials</div>
+          <div class="info-row"><span>Email</span><span class="info-val" id="result-email"></span></div>
+          <div class="info-row"><span>Password</span><span class="info-val" id="result-pass"></span></div>
+          <div class="info-row"><span>Tenant</span><span class="info-val">system</span></div>
+        </div>
+        <div class="info-box" id="result-monitoring-box" style="display:none;">
+          <div class="info-label">Monitoring</div>
+          <div class="info-row"><span>Grafana</span><span class="info-val">http://localhost:3001</span></div>
+          <div class="info-row"><span>Grafana Password</span><span class="info-val" id="result-grafana-pass"></span></div>
+          <div class="info-row"><span>Prometheus</span><span class="info-val">http://localhost:9090</span></div>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-muted); text-align:center; margin-top:1rem;">
+          This installer will shut down automatically in 60 seconds.
+        </p>
+        <div class="btn-row" style="justify-content:center;">
+          <a id="result-open-btn" class="btn btn-primary" href="#" target="_blank">Open Reply Botz HD</a>
+        </div>
+      </div>
+      <div id="result-error" style="display:none;">
+        <div class="banner error">
+          <h2>Installation Failed</h2>
+          <p id="result-error-msg"></p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(1)">Back to Config</button>
+          <button class="btn btn-primary" onclick="location.reload()">Retry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const TOKEN = new URLSearchParams(location.search).get('token') || '';
+  let currentStep = 0;
+
+  const PHASES = ['env', 'pull', 'start', 'health', 'database', 'complete'];
+  const PHASE_LABELS = {
+    env: 'Generate configuration',
+    pull: 'Pull Docker images',
+    start: 'Start services',
+    health: 'Health checks',
+    database: 'Database setup',
+    complete: 'Finalize',
+  };
+
+  function api(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + TOKEN; }
+
+  function goStep(n) {
+    currentStep = n;
+    document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
+    document.querySelectorAll('.step-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === n);
+      d.classList.toggle('done', i < n);
+    });
+  }
+
+  // Step 1: Preflight
+  async function runPreflight() {
+    try {
+      const res = await fetch(api('/api/preflight'));
+      const data = await res.json();
+      const list = document.getElementById('preflight-list');
+      list.innerHTML = '';
+      data.checks.forEach(c => {
+        const li = document.createElement('li');
+        li.className = 'check-item';
+        li.innerHTML = `
+          <span class="check-icon">${c.ok ? '<span style="color:var(--green)">&#10003;</span>' : '<span style="color:var(--red)">&#10007;</span>'}</span>
+          <span>${c.name}</span>
+          <span class="check-detail">${c.detail}</span>`;
+        list.appendChild(li);
+      });
+      document.getElementById('btn-next-0').disabled = !data.ready;
+      if (!data.ready) {
+        const errDiv = document.getElementById('preflight-error');
+        errDiv.style.display = 'block';
+        errDiv.textContent = 'Some prerequisites are not met. Please fix the issues above and refresh.';
+      }
+    } catch (e) {
+      document.getElementById('preflight-list').innerHTML =
+        '<li class="check-item"><span class="check-icon" style="color:var(--red)">&#10007;</span> Failed to connect to installer server</li>';
+    }
+  }
+
+  document.getElementById('btn-next-0').onclick = () => goStep(1);
+  runPreflight();
+
+  // Monitoring toggle
+  document.getElementById('cfg-monitoring').onclick = function() { this.classList.toggle('on'); };
+
+  // SMTP collapsible
+  document.getElementById('smtp-toggle').onclick = function() {
+    const body = document.getElementById('smtp-body');
+    body.classList.toggle('open');
+    this.textContent = body.classList.contains('open') ? '- SMTP Settings (optional)' : '+ SMTP Settings (optional)';
+  };
+
+  // Step 2: Validate & go to review
+  document.getElementById('btn-next-1').onclick = function() {
+    const errDiv = document.getElementById('config-error');
+    errDiv.style.display = 'none';
+
+    const url = document.getElementById('cfg-url').value.trim();
+    const email = document.getElementById('cfg-email').value.trim();
+    const password = document.getElementById('cfg-password').value;
+
+    if (!url) { errDiv.textContent = 'Application URL is required.'; errDiv.style.display = 'block'; return; }
+    if (!email || !email.includes('@')) { errDiv.textContent = 'A valid admin email is required.'; errDiv.style.display = 'block'; return; }
+    if (password.length > 0 && password.length < 8) { errDiv.textContent = 'Password must be at least 8 characters.'; errDiv.style.display = 'block'; return; }
+
+    // Build review table
+    const rows = [
+      ['Application URL', url],
+      ['Domain', document.getElementById('cfg-domain').value || 'replybotz.localhost'],
+      ['Mode', document.getElementById('cfg-mode').value === 'prod' ? 'Production' : 'Development'],
+      ['Monitoring', document.getElementById('cfg-monitoring').classList.contains('on') ? 'Enabled' : 'Disabled'],
+      ['Admin Email', email],
+      ['Admin Password', password ? '********' : '(default: Admin@123456)'],
+    ];
+    const smtp = document.getElementById('cfg-smtp-host').value.trim();
+    if (smtp) rows.push(['SMTP Host', smtp + ':' + (document.getElementById('cfg-smtp-port').value || '587')]);
+
+    const table = document.getElementById('review-table');
+    table.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+    goStep(2);
+  };
+
+  // Step 3: Install
+  document.getElementById('btn-install').onclick = function() {
+    this.disabled = true;
+    goStep(3);
+
+    const config = {
+      appUrl: document.getElementById('cfg-url').value.trim(),
+      domain: document.getElementById('cfg-domain').value.trim() || 'replybotz.localhost',
+      mode: document.getElementById('cfg-mode').value,
+      monitoring: document.getElementById('cfg-monitoring').classList.contains('on'),
+      adminEmail: document.getElementById('cfg-email').value.trim(),
+      adminPassword: document.getElementById('cfg-password').value || '',
+      smtpHost: document.getElementById('cfg-smtp-host').value.trim(),
+      smtpPort: document.getElementById('cfg-smtp-port').value,
+      smtpUser: document.getElementById('cfg-smtp-user').value.trim(),
+      smtpPass: document.getElementById('cfg-smtp-pass').value,
+    };
+
+    const progressList = document.getElementById('progress-list');
+    const logBox = document.getElementById('log-box');
+    const phaseEls = {};
+
+    PHASES.forEach(phase => {
+      const li = document.createElement('li');
+      li.className = 'progress-item';
+      li.id = 'phase-' + phase;
+      li.innerHTML = `
+        <span class="progress-icon" id="icon-${phase}"><span style="color:var(--text-dim)">&#9675;</span></span>
+        <div>
+          <div id="label-${phase}">${PHASE_LABELS[phase]}</div>
+          <div class="progress-msg" id="msg-${phase}"></div>
+        </div>`;
+      progressList.appendChild(li);
+      phaseEls[phase] = li;
+    });
+
+    fetch(api('/api/install'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    }).then(response => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function read() {
+        reader.read().then(({ done, value }) => {
+          if (done) return;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+              try {
+                const evt = JSON.parse(line.slice(6));
+                handleEvent(evt);
+              } catch {}
+            }
+          });
+          read();
+        });
+      }
+      read();
+    }).catch(err => {
+      showError('Connection to installer lost: ' + err.message);
+    });
+
+    function handleEvent(evt) {
+      const { phase, status, message } = evt;
+
+      if (phase === 'error') {
+        showError(message);
+        return;
+      }
+
+      if (phase === 'complete' && status === 'done') {
+        try {
+          const result = JSON.parse(message);
+          showSuccess(result, config);
+        } catch {
+          showSuccess({ appUrl: config.appUrl, adminEmail: config.adminEmail }, config);
+        }
+        return;
+      }
+
+      const icon = document.getElementById('icon-' + phase);
+      const msg = document.getElementById('msg-' + phase);
+      if (!icon || !msg) return;
+
+      if (status === 'running') {
+        icon.innerHTML = '<span class="spinner"></span>';
+        msg.textContent = message;
+      } else if (status === 'done') {
+        icon.innerHTML = '<span style="color:var(--green)">&#10003;</span>';
+        msg.textContent = message;
+      }
+
+      logBox.textContent += message + '\n';
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function showSuccess(result, config) {
+      goStep(4);
+      document.getElementById('result-success').style.display = 'block';
+      document.getElementById('result-url').href = result.appUrl;
+      document.getElementById('result-url').textContent = result.appUrl;
+      document.getElementById('result-health').textContent = result.appUrl + '/api/health';
+      document.getElementById('result-email').textContent = result.adminEmail;
+      document.getElementById('result-pass').textContent = config.adminPassword || 'Admin@123456';
+      document.getElementById('result-open-btn').href = result.appUrl;
+      if (result.monitoring) {
+        document.getElementById('result-monitoring-box').style.display = 'block';
+        document.getElementById('result-grafana-pass').textContent = result.grafanaPassword || '(auto-generated)';
+      }
+    }
+
+    function showError(message) {
+      goStep(4);
+      document.getElementById('result-error').style.display = 'block';
+      document.getElementById('result-error-msg').textContent = message;
+    }
+  };
+
+  window.goStep = goStep;
+})();
+</script>
+
+</body>
+</html>

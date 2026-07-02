@@ -20,8 +20,9 @@ async function main() {
   console.warn(`System tenant created/found: ${tenant.id}`);
 
   // Create super admin user
-  const defaultPassword = 'Admin@123456';
-  const passwordHash = await argon2.hash(defaultPassword, {
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@replybotz.com';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@123456';
+  const passwordHash = await argon2.hash(adminPassword, {
     type: argon2.argon2id,
     memoryCost: 65536,
     timeCost: 3,
@@ -29,11 +30,11 @@ async function main() {
   });
 
   const admin = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@replybotz.com' } },
+    where: { tenantId_email: { tenantId: tenant.id, email: adminEmail } },
     update: {},
     create: {
       tenantId: tenant.id,
-      email: 'admin@replybotz.com',
+      email: adminEmail,
       passwordHash,
       displayName: 'Super Admin',
       role: 'SUPER_ADMIN',
@@ -43,7 +44,7 @@ async function main() {
   });
 
   console.warn(`Super admin created/found: ${admin.id} (${admin.email})`);
-  console.warn(`Default password: ${defaultPassword} — CHANGE THIS IMMEDIATELY`);
+  console.warn(`Default password: ${adminPassword} — CHANGE THIS IMMEDIATELY`);
 
   // Create a demo tenant
   const demo = await prisma.tenant.upsert({
