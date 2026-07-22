@@ -1,5 +1,7 @@
-import type { Config } from 'jest';
+// Plain JS on purpose: loading a jest.config.ts requires ts-node, which CI
+// (Node 20, no ts-node) does not have.
 
+/** @type {Partial<import('jest').Config>} */
 const shared = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
@@ -9,9 +11,10 @@ const shared = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: ['node_modules/(?!(jose|otpauth)/)'],
-} satisfies Partial<Config>;
+};
 
-const config: Config = {
+/** @type {import('jest').Config} */
+const config = {
   coverageDirectory: 'coverage',
   coveragePathIgnorePatterns: ['/node_modules/', '/src/generated/'],
   projects: [
@@ -31,4 +34,4 @@ const config: Config = {
   ],
 };
 
-export default config;
+module.exports = config;
