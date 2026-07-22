@@ -267,7 +267,7 @@
       </div>
       <div class="field">
         <label for="f-password">Password</label>
-        <input id="f-password" type="password" placeholder="Min 8 characters">
+        <input id="f-password" type="password" placeholder="Min 8 characters" required minlength="8">
       </div>
 
       <button class="collapsible-btn" id="smtp-btn" type="button">+ SMTP Settings (optional)</button>
@@ -467,8 +467,8 @@
       alert.style.display = 'block';
       return;
     }
-    if (pass && pass.length < 8) {
-      alert.textContent = 'Password must be at least 8 characters.';
+    if (!pass || pass.length < 8) {
+      alert.textContent = 'An admin password of at least 8 characters is required.';
       alert.style.display = 'block';
       return;
     }
@@ -492,7 +492,7 @@
       ['Mode', config.mode === 'production' ? 'Production' : 'Development'],
       ['Monitoring', config.monitoring ? 'Enabled' : 'Disabled'],
       ['Admin', config.adminEmail],
-      ['Password', config.adminPassword ? '••••••••' : '(default)'],
+      ['Password', '••••••••'],
     ];
     if (config.smtpHost) rows.push(['SMTP', config.smtpHost + ':' + (config.smtpPort || '587')]);
 
@@ -594,12 +594,12 @@
     function succeed(data) {
       go(4);
       Q('#done-ok').style.display = 'block';
-      const url = data.url || config.domain ? 'https://' + config.domain : 'http://' + serverIP + ':3000';
+      const url = data.url || (config.domain ? 'https://' + config.domain : 'http://' + serverIP + ':3000');
       Q('#d-url').href = url;
       Q('#d-url').textContent = url;
       Q('#d-health').textContent = url + '/api/health';
       Q('#d-email').textContent = (data.credentials && data.credentials.email) || config.adminEmail;
-      Q('#d-pass').textContent = config.adminPassword || 'Admin@123456';
+      Q('#d-pass').textContent = 'the password you chose';
       Q('#d-open').href = url;
       if (config.monitoring) Q('#d-monitoring').style.display = 'block';
     }

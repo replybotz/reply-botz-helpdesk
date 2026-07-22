@@ -11,20 +11,16 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-    env_file: .env.local
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   # Disable nginx/certbot in dev
   nginx:
     profiles: [production]
   certbot:
     profiles: [production]
-
-  # Disable monitoring in dev (optional)
-  prometheus:
-    profiles: [monitoring]
-  grafana:
-    profiles: [monitoring]
-  loki:
-    profiles: [monitoring]
-  promtail:
-    profiles: [monitoring]

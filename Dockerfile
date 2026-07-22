@@ -1,12 +1,7 @@
 FROM node:20-alpine AS base
 
-# Install dependencies only
-FROM base AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
-
-# Build the application
+# Build the application. This stage keeps the full toolchain (Prisma CLI,
+# tsx, dev deps) and is reused by the compose `migrate` service.
 FROM base AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -28,7 +23,7 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
+# Generated Prisma client (incl. engine binaries the standalone trace can miss)
 COPY --from=builder /app/src/generated ./src/generated
 
 USER nextjs
@@ -37,5 +32,8 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

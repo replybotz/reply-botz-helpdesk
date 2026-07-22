@@ -11,7 +11,11 @@ const net = require('node:net');
 const PORT = parseInt(process.env.INSTALLER_PORT || '4000', 10);
 const TOKEN = process.env.INSTALLER_TOKEN || crypto.randomBytes(16).toString('hex');
 const ROOT = path.resolve(__dirname, '..');
-const ENV_FILE = path.join(ROOT, '.env.local');
+// Compose interpolates ${VAR} substitutions from `.env` specifically, so the
+// generated config MUST live there (not .env.local) or service passwords
+// would silently fall back to defaults while the app uses the real ones.
+const ENV_FILE = path.join(ROOT, '.env');
+const LEGACY_ENV_FILE = path.join(ROOT, '.env.local');
 const LOCK_FILE = path.join(ROOT, '.installed');
 
 let installState = { status: 'idle', phase: null, log: [], error: null, appUrl: null };
@@ -24,16 +28,18 @@ function generateSecret(bytes, encoding = 'base64') {
   return crypto.randomBytes(bytes).toString(encoding);
 }
 
-function tryExec(cmd) {
+function tryExec(cmd, timeout = 10000) {
   try {
-    return { ok: true, output: execSync(cmd, { encoding: 'utf8', timeout: 10000 }).trim() };
+    return { ok: true, output: execSync(cmd, { encoding: 'utf8', timeout }).trim() };
   } catch {
     return { ok: false, output: '' };
   }
 }
 
 function sendSSE(event, data) {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  // The event name is duplicated into the JSON payload because the browser
+  // client parses only `data:` lines.
+  const payload = `event: ${event}\ndata: ${JSON.stringify({ event, ...data })}\n\n`;
   installState.log.push({ event, ...data });
   for (const res of sseClients) {
     try { res.write(payload); } catch {}
@@ -74,6 +80,52 @@ function getServerIP() {
   return 'localhost';
 }
 
+// ── Config validation / env generation ──
+
+/**
+ * User-supplied values are interpolated into .env; reject anything that
+ * could break out of its line (env-var injection) and quote the rest.
+ */
+function assertSafeValue(name, value) {
+  if (/[\r\n\0]/.test(value)) {
+    throw new Error(`${name} must not contain line breaks`);
+  }
+}
+
+function envQuote(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function envLine(key, value) {
+  assertSafeValue(key, String(value));
+  return `${key}=${envQuote(value)}`;
+}
+
+const DOMAIN_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
+
+function validateConfig(config) {
+  if (config.domain && !DOMAIN_PATTERN.test(config.domain)) {
+    throw new Error('Domain contains invalid characters');
+  }
+  if (!config.adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.adminEmail)) {
+    throw new Error('A valid admin email is required');
+  }
+  if (!config.adminPassword || config.adminPassword.length < 8) {
+    throw new Error('An admin password of at least 8 characters is required');
+  }
+  for (const [name, value] of Object.entries({
+    adminEmail: config.adminEmail,
+    adminPassword: config.adminPassword,
+    smtpHost: config.smtpHost,
+    smtpPort: config.smtpPort,
+    smtpUser: config.smtpUser,
+    smtpPass: config.smtpPass,
+    smtpFrom: config.smtpFrom,
+  })) {
+    if (value) assertSafeValue(name, String(value));
+  }
+}
+
 // ── Preflight Checks ──
 
 async function runPreflight() {
@@ -100,7 +152,8 @@ async function runPreflight() {
   const portFree = await checkPortAvailable(3000);
   checks.port3000 = { ok: portFree, message: portFree ? 'Port 3000 is available' : 'Port 3000 is in use' };
 
-  checks.envExists = { ok: true, exists: fs.existsSync(ENV_FILE), message: fs.existsSync(ENV_FILE) ? '.env.local already exists (will be overwritten)' : '.env.local will be generated' };
+  const envExists = fs.existsSync(ENV_FILE) || fs.existsSync(LEGACY_ENV_FILE);
+  checks.envExists = { ok: true, exists: envExists, message: envExists ? 'Existing configuration will be overwritten' : '.env will be generated' };
 
   return checks;
 }
@@ -110,26 +163,23 @@ async function runPreflight() {
 function spawnAndStream(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, { cwd: ROOT, ...options });
-    let stdout = '', stderr = '';
+    let stderrTail = '';
 
-    if (proc.stdout) {
-      proc.stdout.on('data', (data) => {
-        const line = data.toString();
-        stdout += line;
-        sendSSE('log', { text: line.trimEnd() });
-      });
-    }
+    const stream = (data) => {
+      const line = data.toString();
+      sendSSE('log', { text: line.trimEnd() });
+      return line;
+    };
+    if (proc.stdout) proc.stdout.on('data', stream);
     if (proc.stderr) {
       proc.stderr.on('data', (data) => {
-        const line = data.toString();
-        stderr += line;
-        sendSSE('log', { text: line.trimEnd() });
+        stderrTail = (stderrTail + stream(data)).slice(-500);
       });
     }
 
     proc.on('close', (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`Command exited with code ${code}: ${stderr.slice(-500)}`));
+      if (code === 0) resolve();
+      else reject(new Error(`Command exited with code ${code}: ${stderrTail}`));
     });
     proc.on('error', reject);
   });
@@ -141,88 +191,105 @@ async function runInstall(config) {
   installState = { status: 'running', phase: 'env', log: [], error: null, appUrl: null };
 
   try {
-    // Phase 1: Generate .env.local
+    validateConfig(config);
+
+    const mode = config.mode === 'development' ? 'development' : 'production';
+    const composeFiles = ['-f', 'docker-compose.yml'];
+    if (mode === 'development') {
+      composeFiles.push('-f', 'docker-compose.dev.yml');
+    }
+    const profiles = [];
+    if (config.monitoring) profiles.push('--profile', 'monitoring');
+
+    // Phase 1: Generate .env
     broadcastPhase('env', 'generate', 'running', 'Generating configuration...');
 
     const jwtSecret = generateSecret(48, 'base64');
     const encryptionKey = generateSecret(32, 'hex');
-    const postgresPassword = generateSecret(24, 'base64url').slice(0, 24);
-    const redisPassword = generateSecret(24, 'base64url').slice(0, 24);
-    const meiliMasterKey = generateSecret(24, 'base64url').slice(0, 24);
-    const grafanaPassword = generateSecret(16, 'base64url').slice(0, 16);
+    const postgresPassword = generateSecret(24, 'base64url');
+    const redisPassword = generateSecret(24, 'base64url');
+    const meiliMasterKey = generateSecret(24, 'base64url');
+    const grafanaPassword = generateSecret(16, 'base64url');
 
-    const mode = config.mode || 'production';
-    const nodeEnv = mode === 'development' ? 'development' : 'production';
     const appUrl = config.domain ? `https://${config.domain}` : `http://${getServerIP()}:3000`;
 
-    const envContent = `# ===========================================
-# Reply Botz HD - Generated Configuration
-# Generated on: ${new Date().toISOString()}
-# Generated by: GUI Installer
-# ===========================================
+    const lines = [
+      '# ===========================================',
+      '# Reply Botz HD - Generated Configuration',
+      `# Generated on: ${new Date().toISOString()}`,
+      '# Generated by: GUI Installer',
+      '# ===========================================',
+      '',
+      '# App',
+      envLine('NODE_ENV', mode),
+      envLine('NEXT_PUBLIC_APP_URL', appUrl),
+      envLine('NEXT_PUBLIC_APP_DOMAIN', config.domain || getServerIP()),
+      '',
+      '# Database (PostgreSQL)',
+      envLine('DATABASE_URL', `postgresql://replybotz:${postgresPassword}@postgres:5432/replybotz`),
+      envLine('POSTGRES_PASSWORD', postgresPassword),
+      '',
+      '# Redis',
+      envLine('REDIS_URL', `redis://:${redisPassword}@redis:6379`),
+      envLine('REDIS_PASSWORD', redisPassword),
+      '',
+      '# Auth (JWT)',
+      envLine('JWT_SECRET', jwtSecret),
+      envLine('JWT_ACCESS_EXPIRY', '15m'),
+      envLine('JWT_REFRESH_EXPIRY', '7d'),
+      '',
+      '# Password Hashing (Argon2)',
+      envLine('ARGON2_MEMORY_COST', '65536'),
+      envLine('ARGON2_TIME_COST', '3'),
+      '',
+      '# MFA (TOTP)',
+      envLine('MFA_ISSUER', 'ReplyBotzHD'),
+      '',
+      '# Encryption (AES-256-GCM)',
+      envLine('ENCRYPTION_KEY', encryptionKey),
+      '',
+      '# Meilisearch',
+      envLine('MEILI_URL', 'http://meilisearch:7700'),
+      envLine('MEILI_MASTER_KEY', meiliMasterKey),
+      envLine('MEILI_ENV', mode),
+      '',
+      '# Monitoring',
+      envLine('GRAFANA_PASSWORD', grafanaPassword),
+      '',
+      '# Logging',
+      envLine('LOG_LEVEL', 'info'),
+      '',
+      '# Tenant Resolution',
+      envLine('TENANT_RESOLUTION_MODE', 'subdomain'),
+      '',
+      '# Seed Admin',
+      envLine('SEED_ADMIN_EMAIL', config.adminEmail),
+      envLine('SEED_ADMIN_PASSWORD', config.adminPassword),
+    ];
 
-# App
-NODE_ENV=${nodeEnv}
-NEXT_PUBLIC_APP_URL=${appUrl}
-NEXT_PUBLIC_APP_DOMAIN=${config.domain || `${getServerIP()}`}
+    if (config.smtpHost) {
+      lines.push(
+        '',
+        '# SMTP',
+        envLine('SMTP_HOST', config.smtpHost),
+        envLine('SMTP_PORT', config.smtpPort || '587'),
+        envLine('SMTP_USER', config.smtpUser || ''),
+        envLine('SMTP_PASS', config.smtpPass || ''),
+        envLine('SMTP_FROM', config.smtpFrom || config.adminEmail),
+      );
+    }
 
-# Database (PostgreSQL)
-DATABASE_URL=postgresql://replybotz:${postgresPassword}@postgres:5432/replybotz
-POSTGRES_PASSWORD=${postgresPassword}
-
-# Redis
-REDIS_URL=redis://:${redisPassword}@redis:6379
-REDIS_PASSWORD=${redisPassword}
-
-# Auth (JWT)
-JWT_SECRET=${jwtSecret}
-JWT_ACCESS_EXPIRY=15m
-JWT_REFRESH_EXPIRY=7d
-
-# Password Hashing (Argon2)
-ARGON2_MEMORY_COST=65536
-ARGON2_TIME_COST=3
-
-# MFA (TOTP)
-MFA_ISSUER=ReplyBotzHD
-
-# Encryption (AES-256-GCM)
-ENCRYPTION_KEY=${encryptionKey}
-
-# Meilisearch
-MEILI_URL=http://meilisearch:7700
-MEILI_MASTER_KEY=${meiliMasterKey}
-
-# Monitoring
-GRAFANA_PASSWORD=${grafanaPassword}
-
-# Logging
-LOG_LEVEL=info
-
-# Tenant Resolution
-TENANT_RESOLUTION_MODE=subdomain
-${config.adminEmail ? `\n# Seed Admin\nSEED_ADMIN_EMAIL=${config.adminEmail}` : ''}
-${config.adminPassword ? `SEED_ADMIN_PASSWORD=${config.adminPassword}` : ''}
-${config.smtpHost ? `
-# SMTP
-SMTP_HOST=${config.smtpHost}
-SMTP_PORT=${config.smtpPort || '587'}
-SMTP_USER=${config.smtpUser || ''}
-SMTP_PASS=${config.smtpPass || ''}
-SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
-`;
-
-    fs.writeFileSync(ENV_FILE, envContent, 'utf8');
+    if (fs.existsSync(LEGACY_ENV_FILE)) {
+      fs.renameSync(LEGACY_ENV_FILE, `${LEGACY_ENV_FILE}.bak`);
+      sendSSE('log', { text: 'Moved legacy .env.local to .env.local.bak' });
+    }
+    fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
     broadcastPhase('env', 'generate', 'done', 'Configuration generated');
 
     // Phase 2: Pull images
     broadcastPhase('pull', 'images', 'running', 'Pulling Docker images...');
-    const composeFiles = ['-f', 'docker-compose.yml'];
-    const profiles = [];
-    if (config.monitoring) profiles.push('--profile', 'monitoring');
-
     try {
-      await spawnAndStream('docker', ['compose', ...composeFiles, 'pull'], { env: { ...process.env, COMPOSE_FILE: '' } });
+      await spawnAndStream('docker', ['compose', ...composeFiles, 'pull']);
     } catch {
       sendSSE('log', { text: 'Some images could not be pulled (will build from source)' });
     }
@@ -234,9 +301,11 @@ SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
     broadcastPhase('build', 'start', 'done', 'Services started');
 
     // Phase 4: Health checks
+    const composeCmd = `docker compose ${composeFiles.join(' ')}`;
+
     broadcastPhase('health', 'postgres', 'checking', 'Waiting for PostgreSQL...');
     for (let i = 0; i < 30; i++) {
-      const pg = tryExec(`docker compose ${composeFiles.join(' ')} exec -T postgres pg_isready -U replybotz -d replybotz`);
+      const pg = tryExec(`${composeCmd} exec -T postgres pg_isready -U replybotz -d replybotz`);
       if (pg.ok) break;
       if (i === 29) throw new Error('PostgreSQL failed to start within 30 seconds');
       await new Promise(r => setTimeout(r, 1000));
@@ -245,12 +314,19 @@ SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
 
     broadcastPhase('health', 'redis', 'checking', 'Waiting for Redis...');
     for (let i = 0; i < 15; i++) {
-      const rd = tryExec(`docker compose ${composeFiles.join(' ')} exec -T redis redis-cli ping`);
+      // redis-server runs with --requirepass, so the probe must authenticate
+      const rd = tryExec(`${composeCmd} exec -T redis redis-cli -a '${redisPassword}' --no-auth-warning ping`);
       if (rd.ok && rd.output.includes('PONG')) break;
       if (i === 14) throw new Error('Redis failed to start within 15 seconds');
       await new Promise(r => setTimeout(r, 1000));
     }
     broadcastPhase('health', 'redis', 'done', 'Redis is ready');
+
+    // Phase 5: Migrations and seed — run in the builder-stage image, which
+    // (unlike the standalone runner) has the Prisma CLI and tsx available.
+    broadcastPhase('migrate', 'run', 'running', 'Running database migrations and seed...');
+    await spawnAndStream('docker', ['compose', ...composeFiles, 'run', '--rm', '--build', 'migrate']);
+    broadcastPhase('migrate', 'run', 'done', 'Database ready');
 
     broadcastPhase('health', 'app', 'checking', 'Waiting for application...');
     for (let i = 0; i < 60; i++) {
@@ -261,34 +337,16 @@ SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
     }
     broadcastPhase('health', 'app', 'done', 'Application is ready');
 
-    // Phase 5: Migrations and seed
-    broadcastPhase('migrate', 'run', 'running', 'Running database migrations...');
-    const migrateCmd = mode === 'development' ? 'npx prisma migrate dev --name init' : 'npx prisma migrate deploy';
-    try {
-      await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'sh', '-c', migrateCmd]);
-    } catch {
-      sendSSE('log', { text: 'Migrate command failed, trying db push...' });
-      await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'npx', 'prisma', 'db', 'push']);
-    }
-    broadcastPhase('migrate', 'run', 'done', 'Database migrations complete');
-
-    broadcastPhase('migrate', 'seed', 'running', 'Seeding database...');
-    await spawnAndStream('docker', ['compose', ...composeFiles, 'exec', '-T', 'app', 'npx', 'prisma', 'db', 'seed']);
-    broadcastPhase('migrate', 'seed', 'done', 'Database seeded');
-
-    // Done
+    // Done. The admin password is deliberately NOT echoed back.
     installState.status = 'complete';
     installState.appUrl = appUrl;
-    const loginEmail = config.adminEmail || 'admin@replybotz.com';
-    const loginPassword = config.adminPassword || 'Admin@123456';
 
     sendSSE('complete', {
       url: appUrl,
-      credentials: { email: loginEmail, password: loginPassword, tenant: 'system' },
+      credentials: { email: config.adminEmail, tenant: 'system' },
       services: {
         app: appUrl,
         health: `${appUrl}/api/health`,
-        meilisearch: 'http://localhost:7700',
         ...(config.monitoring ? { grafana: 'http://localhost:3001', prometheus: 'http://localhost:9090' } : {}),
       },
     });
@@ -297,7 +355,7 @@ SMTP_FROM=${config.smtpFrom || config.adminEmail || ''}` : ''}
 
     // Auto-shutdown after 120 seconds
     setTimeout(() => {
-      console.log('\nInstaller shutting down. Reply Botz HD is running at ' + appUrl);
+      console.warn('\nInstaller shutting down. Reply Botz HD is running at ' + appUrl);
       process.exit(0);
     }, 120000);
 
@@ -320,15 +378,23 @@ const MIME = {
   '.json': 'application/json',
 };
 
+function timingSafeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 function verifyToken(req) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const urlToken = url.searchParams.get('token');
   const cookieToken = (req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith('installer_token='))?.split('=')?.[1];
-  return urlToken === TOKEN || cookieToken === TOKEN;
+  return timingSafeCompare(urlToken ?? '', TOKEN) || timingSafeCompare(cookieToken ?? '', TOKEN);
 }
 
 function sendJSON(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
 
@@ -336,13 +402,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = url.pathname;
 
-  // CORS preflight
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST', 'Access-Control-Allow-Headers': 'Content-Type' });
-    return res.end();
-  }
-
-  // Token check (except for static files on root with valid token)
   if (!verifyToken(req)) {
     return sendJSON(res, 403, { error: 'Invalid or missing access token' });
   }
@@ -374,13 +433,16 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
 
     sseClients.push(res);
     req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
 
-    runInstall(config);
+    runInstall(config).catch((err) => {
+      installState.status = 'error';
+      installState.error = err.message;
+      sendSSE('error', { message: err.message });
+    });
     return;
   }
 
@@ -393,7 +455,6 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
 
     // Replay existing log
@@ -423,7 +484,7 @@ const server = http.createServer(async (req, res) => {
     filePath = path.join(__dirname, safePath);
   }
 
-  if (!filePath.startsWith(__dirname)) {
+  if (!filePath.startsWith(__dirname + path.sep) && filePath !== path.join(__dirname, 'index.html')) {
     return sendJSON(res, 403, { error: 'Forbidden' });
   }
 
@@ -440,23 +501,23 @@ const server = http.createServer(async (req, res) => {
 // ── Startup ──
 
 if (fs.existsSync(LOCK_FILE) && !process.argv.includes('--force')) {
-  console.log('Reply Botz HD is already installed.');
-  console.log('To re-run the installer, use: node installer/server.js --force');
+  console.warn('Reply Botz HD is already installed.');
+  console.warn('To re-run the installer, use: node installer/server.js --force');
   process.exit(0);
 }
 
 server.listen(PORT, '0.0.0.0', () => {
   const ip = getServerIP();
-  console.log('');
-  console.log('  ╔══════════════════════════════════════════════════╗');
-  console.log('  ║  Reply Botz HD - GUI Installer                  ║');
-  console.log('  ║                                                  ║');
-  console.log('  ║  Open this URL in your browser:                  ║');
-  console.log(`  ║  http://${ip}:${PORT}?token=${TOKEN}`);
-  console.log('  ║                                                  ║');
-  console.log('  ║  This token is required for access.              ║');
-  console.log('  ╚══════════════════════════════════════════════════╝');
-  console.log('');
-  console.log(`  Local:   http://localhost:${PORT}?token=${TOKEN}`);
-  console.log('');
+  console.warn('');
+  console.warn('  ╔══════════════════════════════════════════════════╗');
+  console.warn('  ║  Reply Botz HD - GUI Installer                   ║');
+  console.warn('  ║                                                  ║');
+  console.warn('  ║  Open this URL in your browser:                  ║');
+  console.warn(`  ║  http://${ip}:${PORT}?token=${TOKEN}`);
+  console.warn('  ║                                                  ║');
+  console.warn('  ║  This token is required for access.              ║');
+  console.warn('  ╚══════════════════════════════════════════════════╝');
+  console.warn('');
+  console.warn(`  Local:   http://localhost:${PORT}?token=${TOKEN}`);
+  console.warn('');
 });

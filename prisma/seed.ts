@@ -44,7 +44,9 @@ async function main() {
   });
 
   console.warn(`Super admin created/found: ${admin.id} (${admin.email})`);
-  console.warn(`Default password: ${adminPassword} — CHANGE THIS IMMEDIATELY`);
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.warn('Using the default admin password (Admin@123456) — CHANGE THIS IMMEDIATELY');
+  }
 
   // Create a demo tenant
   const demo = await prisma.tenant.upsert({

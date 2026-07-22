@@ -11,6 +11,7 @@ set -euo pipefail
 #   --dev       Start in development mode (hot reload)
 #   --prod      Start in production mode (default)
 #   --monitoring  Include Prometheus, Grafana, Loki
+#   --gui       Launch browser-based GUI installer
 #   --down      Stop all services
 #   --reset     Stop all services and destroy volumes
 # ============================================
@@ -40,6 +41,7 @@ for arg in "$@"; do
       read -rp "Are you sure? (y/N): " confirm
       if [[ "$confirm" =~ ^[Yy]$ ]]; then
         docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v 2>/dev/null || true
+        rm -f .installed
         echo -e "${GREEN}All services stopped and volumes removed.${NC}"
       fi
       exit 0
@@ -107,13 +109,21 @@ echo -e "${GREEN}  Docker $(docker --version | grep -oP '\d+\.\d+\.\d+') detecte
 echo -e "${GREEN}  Docker Compose $(docker compose version --short) detected${NC}"
 
 # ---------------------------
-# 2. Generate .env.local
+# 2. Generate .env
 # ---------------------------
+# Docker Compose interpolates ${VAR} placeholders from `.env` specifically,
+# so the config must live there for service passwords to line up with the
+# values the app reads.
 echo ""
 echo -e "${YELLOW}[2/5] Configuring environment...${NC}"
 
-if [ -f .env.local ]; then
-  echo -e "  ${GREEN}.env.local already exists, keeping existing config${NC}"
+if [ -f .env.local ] && [ ! -f .env ]; then
+  mv .env.local .env
+  echo -e "  ${YELLOW}Migrated legacy .env.local to .env${NC}"
+fi
+
+if [ -f .env ]; then
+  echo -e "  ${GREEN}.env already exists, keeping existing config${NC}"
 else
   # Generate secure random values
   JWT_SECRET=$(openssl rand -base64 48 2>/dev/null || head -c 64 /dev/urandom | base64 | tr -d '\n' | head -c 64)
@@ -123,14 +133,21 @@ else
   MEILI_MASTER_KEY=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 24)
   GRAFANA_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -d '\n/+=' | head -c 16)
 
-  cat > .env.local <<EOF
+  if [ "$MODE" = "dev" ]; then
+    NODE_ENV_VALUE="development"
+  else
+    NODE_ENV_VALUE="production"
+  fi
+
+  umask 177
+  cat > .env <<EOF
 # ===========================================
 # Reply Botz HD - Generated Configuration
 # Generated on: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # ===========================================
 
 # App
-NODE_ENV=${MODE}
+NODE_ENV=${NODE_ENV_VALUE}
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_APP_DOMAIN=replybotz.localhost
 
@@ -160,6 +177,7 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 # Meilisearch
 MEILI_URL=http://meilisearch:7700
 MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+MEILI_ENV=${NODE_ENV_VALUE}
 
 # Monitoring
 GRAFANA_PASSWORD=${GRAFANA_PASSWORD}
@@ -170,9 +188,13 @@ LOG_LEVEL=info
 # Tenant Resolution
 TENANT_RESOLUTION_MODE=subdomain
 EOF
+  umask 022
 
-  echo -e "  ${GREEN}.env.local generated with secure random secrets${NC}"
+  echo -e "  ${GREEN}.env generated with secure random secrets (mode 600)${NC}"
 fi
+
+# Values needed later (e.g. Redis health check)
+REDIS_PASSWORD_VALUE=$(grep -E '^REDIS_PASSWORD=' .env | cut -d= -f2- | tr -d '"')
 
 # ---------------------------
 # 3. Build and start services
@@ -221,18 +243,29 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# Wait for Redis
+# Wait for Redis (redis-server runs with --requirepass)
 echo -n "  Redis: "
 for i in $(seq 1 15); do
-  if docker compose $COMPOSE_FILES exec -T redis redis-cli ping &>/dev/null; then
+  if docker compose $COMPOSE_FILES exec -T redis redis-cli -a "$REDIS_PASSWORD_VALUE" --no-auth-warning ping 2>/dev/null | grep -q PONG; then
     echo -e "${GREEN}ready${NC}"
     break
   fi
   if [ "$i" -eq 15 ]; then
     echo -e "${RED}timeout${NC}"
+    echo -e "${RED}Redis failed to start. Check logs: docker compose logs redis${NC}"
+    exit 1
   fi
   sleep 1
 done
+
+# ---------------------------
+# 5. Run database migrations + seed
+# ---------------------------
+# The `migrate` compose service runs in the builder-stage image, which has
+# the Prisma CLI and tsx (the standalone production image does not).
+echo ""
+echo -e "${YELLOW}[5/5] Running database setup...${NC}"
+docker compose $COMPOSE_FILES run --rm migrate 2>&1 | tail -5
 
 # Wait for app
 echo -n "  Application: "
@@ -247,21 +280,7 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-# ---------------------------
-# 5. Run database migrations
-# ---------------------------
-echo ""
-echo -e "${YELLOW}[5/5] Running database setup...${NC}"
-
-if [ "$MODE" = "dev" ]; then
-  docker compose $COMPOSE_FILES exec -T app sh -c "npx prisma migrate dev --name init 2>/dev/null || npx prisma db push" 2>&1 | tail -3
-  echo -e "  Seeding database..."
-  docker compose $COMPOSE_FILES exec -T app npx prisma db seed 2>&1 | tail -3
-else
-  docker compose $COMPOSE_FILES exec -T app sh -c "npx prisma migrate deploy 2>/dev/null || npx prisma db push" 2>&1 | tail -3
-  echo -e "  Seeding database..."
-  docker compose $COMPOSE_FILES exec -T app npx prisma db seed 2>&1 | tail -3
-fi
+date -u +"%Y-%m-%dT%H:%M:%SZ" > .installed
 
 # ---------------------------
 # Done!
@@ -284,15 +303,16 @@ if [ "$MODE" = "prod" ]; then
   echo -e "  ${CYAN}Nginx:${NC}        http://localhost:80"
 fi
 
+SEED_EMAIL=$(grep -E '^SEED_ADMIN_EMAIL=' .env | cut -d= -f2- | tr -d '"' || true)
 echo ""
 echo -e "  ${YELLOW}Default login:${NC}"
-echo -e "    Email:    admin@system.replybotz.local"
-echo -e "    Password: Admin@123456"
+echo -e "    Email:    ${SEED_EMAIL:-admin@replybotz.com}"
+echo -e "    Password: (SEED_ADMIN_PASSWORD from .env, or Admin@123456 if unset — CHANGE IT)"
 echo -e "    Tenant:   system"
 echo ""
 echo -e "  ${YELLOW}Demo login:${NC}"
-echo -e "    Email:    admin@demo.replybotz.local"
-echo -e "    Password: Admin@123456"
+echo -e "    Email:    admin@demo.com"
+echo -e "    Password: (same as default login)"
 echo -e "    Tenant:   demo"
 echo ""
 echo -e "  ${YELLOW}Commands:${NC}"
