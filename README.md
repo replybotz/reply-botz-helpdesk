@@ -32,14 +32,25 @@ An open-source (MIT), AI-first helpdesk platform with multi-channel support, mul
 - PostgreSQL 16+
 - Redis 7+
 
-### Development Setup
+### Guided Install (recommended)
+
+```bash
+# Terminal installer — generates .env, starts Docker services, migrates + seeds
+./install.sh            # production mode
+./install.sh --dev      # development mode (hot reload)
+
+# Or the browser-based wizard
+./install.sh --gui
+```
+
+### Development Setup (manual)
 
 ```bash
 # Install dependencies
 npm install
 
-# Copy environment config
-cp .env.example .env.local
+# Copy environment config (Docker Compose reads ${VAR} values from .env)
+cp .env.example .env
 
 # Generate Prisma client
 npx prisma generate
@@ -54,17 +65,32 @@ npm run db:seed
 npm run dev
 ```
 
-### Docker Setup
+### Docker Setup (manual)
 
 ```bash
-# Copy environment config
-cp .env.example .env.local
+# Copy environment config and fill in real secrets
+cp .env.example .env
 
 # Start all services
 docker compose up -d
 
-# For development (without nginx/monitoring)
+# Run migrations + seed (one-shot service with the Prisma CLI)
+docker compose run --rm migrate
+
+# For development (hot reload, no nginx/ssl)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+Seeded logins default to `admin@replybotz.com` (tenant `system`) and
+`admin@demo.com` (tenant `demo`); set `SEED_ADMIN_EMAIL` /
+`SEED_ADMIN_PASSWORD` in `.env` before seeding to override.
+
+### Checks
+
+```bash
+npm run lint        # eslint
+npm run typecheck   # tsc --noEmit
+npm test            # jest (node + jsdom projects)
 ```
 
 ## Project Structure
@@ -78,7 +104,7 @@ src/
 │   ├── tenant/       # Multi-tenant context, middleware, RLS
 │   └── rbac/         # Permissions, roles, route guards
 ├── types/            # TypeScript type definitions
-└── middleware.ts      # Next.js edge middleware
+└── proxy.ts          # Next.js proxy (edge auth gate; middleware was renamed in Next 16)
 ```
 
 ## Architecture

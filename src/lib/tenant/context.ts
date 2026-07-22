@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { cache } from 'react';
+import { AuthenticationError } from '@/lib/errors';
 
 export interface TenantContext {
   tenantId: string;
@@ -16,7 +17,8 @@ export const getTenantContext = cache(async (): Promise<TenantContext> => {
   const userRole = headerStore.get('x-user-role');
 
   if (!tenantId) {
-    throw new Error('Tenant context not available');
+    // 401 via errorResponse instead of an opaque 500
+    throw new AuthenticationError('Tenant context not available');
   }
 
   return { tenantId, tenantSlug, userId, userRole };

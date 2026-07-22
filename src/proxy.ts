@@ -1,30 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
+import { resolveTenantSlug } from '@/lib/tenant/middleware';
 
 const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/health'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
-}
-
-function resolveTenantSlug(request: NextRequest): string | null {
-  const host = request.headers.get('host') ?? '';
-  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN ?? 'replybotz.localhost';
-
-  if (host !== appDomain && host.endsWith(`.${appDomain}`)) {
-    const subdomain = host.replace(`.${appDomain}`, '');
-    if (subdomain && !subdomain.includes('.')) {
-      return subdomain;
-    }
-  }
-
-  const headerSlug = request.headers.get('x-tenant-slug');
-  if (headerSlug) return headerSlug;
-
-  const querySlug = request.nextUrl.searchParams.get('tenant');
-  if (querySlug) return querySlug;
-
-  return null;
 }
 
 /**
