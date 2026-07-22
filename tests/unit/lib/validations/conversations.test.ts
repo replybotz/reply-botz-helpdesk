@@ -39,13 +39,11 @@ describe('sendMessageSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should accept optional role', () => {
-    const result = sendMessageSchema.safeParse({ content: 'Hello', role: 'AGENT' });
+  it('should strip a client-supplied role (derived server-side)', () => {
+    const result = sendMessageSchema.safeParse({ content: 'Hello', role: 'AI' });
     expect(result.success).toBe(true);
-  });
-
-  it('should reject invalid role', () => {
-    const result = sendMessageSchema.safeParse({ content: 'Hello', role: 'INVALID' });
-    expect(result.success).toBe(false);
+    if (result.success) {
+      expect('role' in result.data).toBe(false);
+    }
   });
 });

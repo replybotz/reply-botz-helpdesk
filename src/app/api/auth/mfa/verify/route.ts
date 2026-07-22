@@ -1,33 +1,53 @@
-import { prisma } from '@/lib/db';
-import { verifyMfaToken as verifyTotp } from '@/lib/auth/mfa';
-import { verifyMfaToken as verifyMfaJwt, signAccessToken } from '@/lib/auth/jwt';
-import { createSession } from '@/lib/auth/session';
-import { encrypt } from '@/lib/encryption';
-import { audit } from '@/lib/audit';
-import { mfaVerifySchema, mfaSetupVerifySchema } from '@/lib/validations/auth';
-import { errorResponse, AuthenticationError, ValidationError } from '@/lib/errors';
 import { headers } from 'next/headers';
+import { prisma } from '@/lib/db';
+import { redis } from '@/lib/redis';
+import { verifyMfaToken as verifyTotp, pendingMfaSecretKey } from '@/lib/auth/mfa';
+import { signAccessToken } from '@/lib/auth/jwt';
+import { createSession } from '@/lib/auth/session';
+import { setAuthCookies } from '@/lib/auth/cookies';
+import { assertMfaNotLocked, recordMfaFailure, clearMfaFailures } from '@/lib/rate-limit';
+import { encrypt, decrypt } from '@/lib/encryption';
+import { audit } from '@/lib/audit';
+import { mfaVerifySchema } from '@/lib/validations/auth';
+import { errorResponse, AuthenticationError, ValidationError } from '@/lib/errors';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const headerStore = await headers();
+    // Both headers are stamped by the proxy from the *verified* JWT and are
+    // stripped from incoming requests, so they cannot be spoofed.
     const userId = headerStore.get('x-user-id');
+    const tenantId = headerStore.get('x-tenant-id');
+    const mfaPending = headerStore.get('x-mfa-pending') === '1';
 
-    // Case 1: MFA Setup verification (authenticated user enabling MFA)
-    if (userId) {
-      const parsed = mfaSetupVerifySchema.safeParse(body);
-      if (!parsed.success) {
-        throw new ValidationError('Validation failed', parsed.error.flatten().fieldErrors as Record<string, string[]>);
+    if (!userId || !tenantId) {
+      throw new AuthenticationError();
+    }
+
+    const parsed = mfaVerifySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new ValidationError('Validation failed', parsed.error.flatten().fieldErrors as Record<string, string[]>);
+    }
+    const { token } = parsed.data;
+
+    await assertMfaNotLocked(userId);
+
+    // Case 1: setup verification — a fully-authenticated user enabling MFA.
+    // The mfaPending check is what prevents a password-only attacker from
+    // overwriting the account's MFA secret.
+    if (!mfaPending) {
+      const encryptedPending = await redis.get(pendingMfaSecretKey(tenantId, userId));
+      if (!encryptedPending) {
+        throw new AuthenticationError('No MFA setup in progress. Request a new setup code.');
       }
 
-      const { token, secret } = parsed.data;
-      const valid = verifyTotp(secret, token);
-      if (!valid) {
+      const secret = decrypt(encryptedPending);
+      if (!verifyTotp(secret, token)) {
+        await recordMfaFailure(userId);
         throw new AuthenticationError('Invalid MFA code');
       }
 
-      // Store encrypted secret and enable MFA
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -35,52 +55,33 @@ export async function POST(request: Request) {
           mfaEnabled: true,
         },
       });
+      await redis.del(pendingMfaSecretKey(tenantId, userId));
+      await clearMfaFailures(userId);
 
-      const tenantId = headerStore.get('x-tenant-id');
-      if (tenantId) {
-        await audit({
-          tenantId,
-          userId,
-          action: 'user.mfa_enabled',
-          entityType: 'user',
-          entityId: userId,
-        });
-      }
+      await audit({
+        tenantId,
+        userId,
+        action: 'user.mfa_enabled',
+        entityType: 'user',
+        entityId: userId,
+      });
 
       return Response.json({ success: true, mfaEnabled: true });
     }
 
-    // Case 2: MFA Login verification (unauthenticated user with MFA token)
-    const parsed = mfaVerifySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new ValidationError('Validation failed', parsed.error.flatten().fieldErrors as Record<string, string[]>);
-    }
-
-    const { token, mfaToken } = parsed.data;
-    if (!mfaToken) {
-      throw new AuthenticationError('MFA token is required');
-    }
-
-    // Verify MFA JWT
-    const mfaPayload = await verifyMfaJwt(mfaToken);
-
-    // Get user and verify TOTP
-    const user = await prisma.user.findUnique({
-      where: { id: mfaPayload.sub },
-    });
+    // Case 2: login verification — an MFA-pending session completing sign-in.
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !user.mfaSecret) {
       throw new AuthenticationError('Invalid MFA configuration');
     }
 
-    // Decrypt the stored secret
-    const { decrypt } = await import('@/lib/encryption');
     const decryptedSecret = decrypt(user.mfaSecret);
-    const valid = verifyTotp(decryptedSecret, token);
-
-    if (!valid) {
+    if (!verifyTotp(decryptedSecret, token)) {
+      await recordMfaFailure(userId);
       throw new AuthenticationError('Invalid MFA code');
     }
+    await clearMfaFailures(userId);
 
     // Issue full auth tokens
     const userAgent = request.headers.get('user-agent') ?? undefined;
@@ -118,18 +119,10 @@ export async function POST(request: Request) {
         role: user.role,
         mfaEnabled: user.mfaEnabled,
       },
-      tokens: {
-        accessToken,
-        expiresAt: session.expiresAt,
-      },
+      expiresAt: session.expiresAt,
     });
 
-    response.headers.set(
-      'Set-Cookie',
-      `refreshToken=${session.refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${7 * 24 * 60 * 60}`,
-    );
-
-    return response;
+    return setAuthCookies(response, { accessToken, refreshToken: session.refreshToken });
   } catch (error) {
     return errorResponse(error);
   }

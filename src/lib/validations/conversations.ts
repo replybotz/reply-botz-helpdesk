@@ -9,9 +9,10 @@ export const createConversationSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+// Message role is intentionally absent: it is derived server-side from the
+// authenticated user's role so provenance cannot be spoofed.
 export const sendMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required'),
-  role: z.enum(['CUSTOMER', 'AGENT', 'AI', 'SYSTEM']).optional(),
 });
 
 export const updateConversationSchema = z.object({

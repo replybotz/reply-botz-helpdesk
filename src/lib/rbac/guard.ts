@@ -21,11 +21,16 @@ export interface RouteContext {
   role: UserRole;
 }
 
-export function withPermission(
+/** Next 16 route-handler context: `params` resolves to the dynamic segments. */
+export interface RouteHandlerContext<P = Record<string, string>> {
+  params: Promise<P>;
+}
+
+export function withPermission<P = Record<string, string>>(
   permission: PermissionKey,
-  handler: (req: Request, context: RouteContext) => Promise<Response>,
+  handler: (req: Request, context: RouteContext, routeCtx: RouteHandlerContext<P>) => Promise<Response>,
 ) {
-  return async (req: Request) => {
+  return async (req: Request, routeCtx: RouteHandlerContext<P>) => {
     const headerStore = await headers();
     const userId = headerStore.get('x-user-id');
     const userRole = headerStore.get('x-user-role');
@@ -39,10 +44,14 @@ export function withPermission(
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return handler(req, {
-      tenantId,
-      userId,
-      role: userRole as UserRole,
-    });
+    return handler(
+      req,
+      {
+        tenantId,
+        userId,
+        role: userRole as UserRole,
+      },
+      routeCtx,
+    );
   };
 }

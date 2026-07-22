@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { updateArticleSchema } from '@/lib/validations/kb';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
-export const GET = withPermission(Permission.KB_READ, async (req: Request, ctx: RouteContext) => {
+export const GET = withPermission(Permission.KB_READ, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const article = await db.knowledgeBaseArticle.findFirst({
@@ -29,9 +29,9 @@ export const GET = withPermission(Permission.KB_READ, async (req: Request, ctx: 
   }
 });
 
-export const PATCH = withPermission(Permission.KB_UPDATE, async (req: Request, ctx: RouteContext) => {
+export const PATCH = withPermission(Permission.KB_UPDATE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const body = await req.json();
     const parsed = updateArticleSchema.safeParse(body);
     if (!parsed.success) {
@@ -65,9 +65,9 @@ export const PATCH = withPermission(Permission.KB_UPDATE, async (req: Request, c
   }
 });
 
-export const DELETE = withPermission(Permission.KB_DELETE, async (req: Request, ctx: RouteContext) => {
+export const DELETE = withPermission(Permission.KB_DELETE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const existing = await db.knowledgeBaseArticle.findFirst({ where: { id } });

@@ -1,5 +1,12 @@
 import { Prisma } from '@/generated/prisma';
 
+/**
+ * LIMITATION: this extension scopes only TOP-LEVEL operations. Nested
+ * relations reached through `include`/`select` are NOT filtered by tenantId,
+ * so any client-supplied foreign key that ends up in a scoped row must be
+ * validated against the tenant at the API boundary before writing (see the
+ * customerId check in the conversations route).
+ */
 const TENANT_SCOPED_MODELS = [
   'User',
   'Conversation',

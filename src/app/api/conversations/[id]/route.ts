@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { updateConversationSchema } from '@/lib/validations/conversations';
@@ -8,9 +8,9 @@ import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
 export const GET = withPermission(
   Permission.CONVERSATION_READ,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const id = new URL(req.url).pathname.split('/').pop()!;
+      const { id } = await routeCtx.params;
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
       const conversation = await db.conversation.findFirst({
@@ -39,9 +39,9 @@ export const GET = withPermission(
 
 export const PATCH = withPermission(
   Permission.CONVERSATION_CLOSE,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const id = new URL(req.url).pathname.split('/').pop()!;
+      const { id } = await routeCtx.params;
       const body = await req.json();
       const parsed = updateConversationSchema.safeParse(body);
       if (!parsed.success) {

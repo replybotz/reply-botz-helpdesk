@@ -149,13 +149,14 @@ model User {
 }
 
 model Session {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
-  refreshToken String   @unique @map("refresh_token") @db.VarChar(500)
-  userAgent    String?  @map("user_agent") @db.VarChar(500)
-  ipAddress    String?  @map("ip_address") @db.VarChar(45)
-  expiresAt    DateTime @map("expires_at")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  refreshToken String    @unique @map("refresh_token") @db.VarChar(500)
+  userAgent    String?   @map("user_agent") @db.VarChar(500)
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

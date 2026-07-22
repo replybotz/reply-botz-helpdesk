@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { updateTicketSchema } from '@/lib/validations/tickets';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
-export const GET = withPermission(Permission.TICKET_READ, async (req: Request, ctx: RouteContext) => {
+export const GET = withPermission(Permission.TICKET_READ, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const ticket = await db.ticket.findFirst({
@@ -33,9 +33,9 @@ export const GET = withPermission(Permission.TICKET_READ, async (req: Request, c
   }
 });
 
-export const PATCH = withPermission(Permission.TICKET_UPDATE, async (req: Request, ctx: RouteContext) => {
+export const PATCH = withPermission(Permission.TICKET_UPDATE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const body = await req.json();
     const parsed = updateTicketSchema.safeParse(body);
     if (!parsed.success) {
@@ -75,9 +75,9 @@ export const PATCH = withPermission(Permission.TICKET_UPDATE, async (req: Reques
   }
 });
 
-export const DELETE = withPermission(Permission.TICKET_DELETE, async (req: Request, ctx: RouteContext) => {
+export const DELETE = withPermission(Permission.TICKET_DELETE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const existing = await db.ticket.findFirst({ where: { id } });

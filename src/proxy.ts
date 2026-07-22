@@ -27,7 +27,24 @@ function resolveTenantSlug(request: NextRequest): string | null {
   return null;
 }
 
-export async function middleware(request: NextRequest) {
+/**
+ * CSRF defense-in-depth: cookie-authenticated browsers always send an Origin
+ * header on cross-site requests, so a mutating /api request whose Origin
+ * disagrees with Host is rejected. Bearer-header API clients send no Origin
+ * and are unaffected.
+ */
+function isCrossOrigin(request: NextRequest): boolean {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return false;
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== request.headers.get('host');
+  } catch {
+    return true;
+  }
+}
+
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Skip static assets
@@ -35,8 +52,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith('/api/') && isCrossOrigin(request)) {
+    return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+  }
+
   const tenantSlug = resolveTenantSlug(request);
   const requestHeaders = new Headers(request.headers);
+
+  // Identity headers must only ever come from the verified token below.
+  requestHeaders.delete('x-user-id');
+  requestHeaders.delete('x-user-role');
+  requestHeaders.delete('x-tenant-id');
+  requestHeaders.delete('x-mfa-pending');
 
   if (tenantSlug) {
     requestHeaders.set('x-tenant-slug', tenantSlug);
@@ -47,9 +74,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // Check for access token
+  // Browser clients carry the token in an httpOnly cookie; API clients may
+  // use an Authorization header instead.
   const authHeader = request.headers.get('authorization');
-  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const accessToken =
+    request.cookies.get('accessToken')?.value ??
+    (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
 
   if (!accessToken) {
     // For API routes, return 401
@@ -60,16 +90,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    // Fail closed: never fall back to a guessable empty-string key.
+    console.error('JWT_SECRET is not configured');
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? '');
-    const { payload } = await jwtVerify(accessToken, secret);
+    const secret = new TextEncoder().encode(jwtSecret);
+    const { payload } = await jwtVerify(accessToken, secret, { algorithms: ['HS256'] });
 
     // Reject MFA-pending tokens on non-MFA routes
-    if ((payload as Record<string, unknown>).mfaPending && !pathname.startsWith('/mfa') && !pathname.startsWith('/api/auth/mfa')) {
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'MFA verification required' }, { status: 403 });
+    if ((payload as Record<string, unknown>).mfaPending) {
+      if (!pathname.startsWith('/mfa') && !pathname.startsWith('/api/auth/mfa')) {
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json({ error: 'MFA verification required' }, { status: 403 });
+        }
+        return NextResponse.redirect(new URL('/mfa', request.url));
       }
-      return NextResponse.redirect(new URL('/mfa', request.url));
+      requestHeaders.set('x-mfa-pending', '1');
     }
 
     requestHeaders.set('x-user-id', payload.sub as string);

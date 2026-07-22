@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function MfaPage() {
+  const router = useRouter();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,16 +15,11 @@ export default function MfaPage() {
     setLoading(true);
 
     try {
-      const mfaToken = sessionStorage.getItem('mfaToken');
-      if (!mfaToken) {
-        setError('MFA session expired. Please login again.');
-        return;
-      }
-
+      // The MFA-pending token travels in an httpOnly cookie set at login.
       const res = await fetch('/api/auth/mfa/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: code, mfaToken }),
+        body: JSON.stringify({ token: code }),
       });
 
       const data = await res.json();
@@ -32,9 +29,8 @@ export default function MfaPage() {
         return;
       }
 
-      sessionStorage.removeItem('mfaToken');
-      sessionStorage.setItem('accessToken', data.tokens.accessToken);
-      window.location.href = '/dashboard';
+      router.push('/dashboard');
+      router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
     } finally {

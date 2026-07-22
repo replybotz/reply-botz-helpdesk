@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
@@ -29,16 +31,9 @@ export default function LoginPage() {
         return;
       }
 
-      if (data.requiresMfa) {
-        // Store MFA token and redirect to MFA page
-        sessionStorage.setItem('mfaToken', data.mfaToken);
-        window.location.href = '/mfa';
-        return;
-      }
-
-      // Store access token and redirect to dashboard
-      sessionStorage.setItem('accessToken', data.tokens.accessToken);
-      window.location.href = '/dashboard';
+      // Auth tokens are set as httpOnly cookies by the server.
+      router.push(data.requiresMfa ? '/mfa' : '/dashboard');
+      router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
     } finally {

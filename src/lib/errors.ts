@@ -54,6 +54,13 @@ export class ConflictError extends AppError {
   }
 }
 
+export class RateLimitError extends AppError {
+  constructor(message = 'Too many requests. Try again later.') {
+    super(message, 429, 'RATE_LIMITED');
+    this.name = 'RateLimitError';
+  }
+}
+
 export function errorResponse(error: unknown): Response {
   if (error instanceof AppError) {
     return Response.json(

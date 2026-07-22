@@ -58,7 +58,7 @@ export async function signMfaToken(payload: {
 }
 
 export async function verifyAccessToken(token: string): Promise<TokenPayload> {
-  const { payload } = await jwtVerify(token, getSecret());
+  const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] });
   if ((payload as Record<string, unknown>).mfaPending) {
     throw new Error('MFA verification required');
   }
@@ -66,7 +66,7 @@ export async function verifyAccessToken(token: string): Promise<TokenPayload> {
 }
 
 export async function verifyMfaToken(token: string): Promise<MfaTokenPayload> {
-  const { payload } = await jwtVerify(token, getSecret());
+  const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] });
   if (!(payload as Record<string, unknown>).mfaPending) {
     throw new Error('Invalid MFA token');
   }

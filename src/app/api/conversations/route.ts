@@ -4,7 +4,7 @@ import { withPermission, type RouteContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { createConversationSchema } from '@/lib/validations/conversations';
-import { errorResponse, ValidationError } from '@/lib/errors';
+import { errorResponse, AuthorizationError, ValidationError } from '@/lib/errors';
 
 export const GET = withPermission(
   Permission.CONVERSATION_READ,
@@ -62,6 +62,20 @@ export const POST = withPermission(
 
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
       const customerId = parsed.data.customerId ?? ctx.userId;
+
+      // Customers may only open conversations for themselves, and any
+      // supplied customerId must belong to this tenant (the scoped client
+      // injects the tenantId filter) — otherwise nested includes on later
+      // reads would leak a foreign tenant's user data.
+      if (ctx.role === 'CUSTOMER' && customerId !== ctx.userId) {
+        throw new AuthorizationError('Customers can only create their own conversations');
+      }
+      if (customerId !== ctx.userId) {
+        const customer = await db.user.findFirst({ where: { id: customerId }, select: { id: true } });
+        if (!customer) {
+          throw new ValidationError('Validation failed', { customerId: ['Unknown customer'] });
+        }
+      }
 
       const conversation = await db.conversation.create({
         data: {

@@ -1,17 +1,15 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { sendMessageSchema } from '@/lib/validations/conversations';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
 export const POST = withPermission(
   Permission.CONVERSATION_CREATE,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const url = new URL(req.url);
-      const segments = url.pathname.split('/');
-      const conversationId = segments[segments.indexOf('conversations') + 1];
+      const { id: conversationId } = await routeCtx.params;
 
       const body = await req.json();
       const parsed = sendMessageSchema.safeParse(body);
@@ -29,7 +27,9 @@ export const POST = withPermission(
       });
       if (!conversation) throw new NotFoundError('Conversation');
 
-      const role = parsed.data.role ?? (ctx.role === 'CUSTOMER' ? 'CUSTOMER' : 'AGENT');
+      // Provenance is derived from the authenticated role, never from the
+      // request body — AI/SYSTEM messages are created only by server workers.
+      const role = ctx.role === 'CUSTOMER' ? 'CUSTOMER' : 'AGENT';
 
       const message = await prisma.message.create({
         data: {

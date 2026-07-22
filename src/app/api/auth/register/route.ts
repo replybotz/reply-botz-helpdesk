@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { signAccessToken } from '@/lib/auth/jwt';
 import { createSession } from '@/lib/auth/session';
+import { setAuthCookies } from '@/lib/auth/cookies';
+import { enforceRateLimit, clientIp } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
 import { registerSchema } from '@/lib/validations/auth';
 import { errorResponse, ConflictError, TenantNotFoundError, ValidationError } from '@/lib/errors';
@@ -14,6 +16,8 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       throw new ValidationError('Validation failed', parsed.error.flatten().fieldErrors as Record<string, string[]>);
     }
+
+    await enforceRateLimit(`register:ip:${clientIp(request)}`, { max: 5, windowSec: 3600 });
 
     const { email, password, displayName, tenantSlug } = parsed.data;
 
@@ -83,21 +87,12 @@ export async function POST(request: Request) {
           role: user.role,
           mfaEnabled: user.mfaEnabled,
         },
-        tokens: {
-          accessToken,
-          expiresAt: session.expiresAt,
-        },
+        expiresAt: session.expiresAt,
       },
       { status: 201 },
     );
 
-    // Set refresh token cookie
-    response.headers.set(
-      'Set-Cookie',
-      `refreshToken=${session.refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${7 * 24 * 60 * 60}`,
-    );
-
-    return response;
+    return setAuthCookies(response, { accessToken, refreshToken: session.refreshToken });
   } catch (error) {
     return errorResponse(error);
   }

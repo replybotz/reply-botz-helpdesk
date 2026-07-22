@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -30,8 +32,9 @@ export default function RegisterPage() {
         return;
       }
 
-      sessionStorage.setItem('accessToken', data.tokens.accessToken);
-      window.location.href = '/dashboard';
+      // Auth tokens are set as httpOnly cookies by the server.
+      router.push('/dashboard');
+      router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
     } finally {

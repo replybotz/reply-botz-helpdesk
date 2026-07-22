@@ -6,7 +6,11 @@ const IV_LENGTH = 12;
 function getKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) throw new Error('ENCRYPTION_KEY environment variable is required');
-  return Buffer.from(key, 'hex');
+  const buffer = Buffer.from(key, 'hex');
+  if (buffer.length !== 32) {
+    throw new Error('ENCRYPTION_KEY must be 64 hex characters (32 bytes) for AES-256');
+  }
+  return buffer;
 }
 
 export function encrypt(plaintext: string): string {

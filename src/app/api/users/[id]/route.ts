@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { updateUserSchema } from '@/lib/validations/users';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
-export const GET = withPermission(Permission.USER_READ, async (req: Request, ctx: RouteContext) => {
+export const GET = withPermission(Permission.USER_READ, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const user = await db.user.findFirst({
@@ -34,9 +34,9 @@ export const GET = withPermission(Permission.USER_READ, async (req: Request, ctx
   }
 });
 
-export const PATCH = withPermission(Permission.USER_UPDATE, async (req: Request, ctx: RouteContext) => {
+export const PATCH = withPermission(Permission.USER_UPDATE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const body = await req.json();
     const parsed = updateUserSchema.safeParse(body);
     if (!parsed.success) {
@@ -78,9 +78,9 @@ export const PATCH = withPermission(Permission.USER_UPDATE, async (req: Request,
   }
 });
 
-export const DELETE = withPermission(Permission.USER_DELETE, async (req: Request, ctx: RouteContext) => {
+export const DELETE = withPermission(Permission.USER_DELETE, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
-    const id = new URL(req.url).pathname.split('/').pop()!;
+    const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
     const existing = await db.user.findFirst({ where: { id } });

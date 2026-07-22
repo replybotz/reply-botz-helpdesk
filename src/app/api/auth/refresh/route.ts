@@ -1,19 +1,12 @@
 import { prisma } from '@/lib/db';
 import { signAccessToken } from '@/lib/auth/jwt';
 import { rotateSession } from '@/lib/auth/session';
+import { setAuthCookies, getCookie } from '@/lib/auth/cookies';
 import { errorResponse, AuthenticationError } from '@/lib/errors';
-
-function getRefreshTokenFromCookie(request: Request): string | null {
-  const cookie = request.headers.get('cookie');
-  if (!cookie) return null;
-
-  const match = cookie.match(/refreshToken=([^;]+)/);
-  return match ? match[1] : null;
-}
 
 export async function POST(request: Request) {
   try {
-    const refreshToken = getRefreshTokenFromCookie(request);
+    const refreshToken = getCookie(request, 'refreshToken');
     if (!refreshToken) {
       throw new AuthenticationError('No refresh token provided');
     }
@@ -48,19 +41,9 @@ export async function POST(request: Request) {
       email: user.email,
     });
 
-    const response = Response.json({
-      tokens: {
-        accessToken,
-        expiresAt: result.expiresAt,
-      },
-    });
+    const response = Response.json({ expiresAt: result.expiresAt });
 
-    response.headers.set(
-      'Set-Cookie',
-      `refreshToken=${result.refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${7 * 24 * 60 * 60}`,
-    );
-
-    return response;
+    return setAuthCookies(response, { accessToken, refreshToken: result.refreshToken });
   } catch (error) {
     return errorResponse(error);
   }

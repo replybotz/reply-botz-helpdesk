@@ -1,28 +1,41 @@
 import { prisma } from '@/lib/db';
 import { withTenantScope } from '@/lib/tenant/rls';
-import { withPermission, type RouteContext } from '@/lib/rbac/guard';
+import { withPermission, type RouteContext, type RouteHandlerContext } from '@/lib/rbac/guard';
 import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { updateIntegrationSchema } from '@/lib/validations/integrations';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
+const SECRET_KEY_PATTERN = /secret|token|key|password|credential/i;
+
+function maskSecrets(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(config).map(([key, value]) => {
+      if (SECRET_KEY_PATTERN.test(key) && typeof value === 'string' && value) {
+        return [key, `••••${value.slice(-4)}`];
+      }
+      return [key, value];
+    }),
+  );
+}
+
 export const GET = withPermission(
   Permission.INTEGRATION_READ,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const id = new URL(req.url).pathname.split('/').pop()!;
+      const { id } = await routeCtx.params;
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
       const integration = await db.integration.findFirst({ where: { id } });
       if (!integration) throw new NotFoundError('Integration');
 
-      // Decrypt config for display (mask sensitive values)
-      let config = {};
+      // Decrypt config for display, masking secret-like values
+      let config: Record<string, unknown> = {};
       try {
-        config = JSON.parse(decrypt(integration.config));
-      } catch {
-        // Config may not be encrypted in dev
+        config = maskSecrets(JSON.parse(decrypt(integration.config)));
+      } catch (error) {
+        console.error(`Failed to decrypt config for integration ${integration.id}:`, error);
       }
 
       return Response.json({
@@ -41,9 +54,9 @@ export const GET = withPermission(
 
 export const PATCH = withPermission(
   Permission.INTEGRATION_MANAGE,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const id = new URL(req.url).pathname.split('/').pop()!;
+      const { id } = await routeCtx.params;
       const body = await req.json();
       const parsed = updateIntegrationSchema.safeParse(body);
       if (!parsed.success) {
@@ -89,9 +102,9 @@ export const PATCH = withPermission(
 
 export const DELETE = withPermission(
   Permission.INTEGRATION_MANAGE,
-  async (req: Request, ctx: RouteContext) => {
+  async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
-      const id = new URL(req.url).pathname.split('/').pop()!;
+      const { id } = await routeCtx.params;
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
       const existing = await db.integration.findFirst({ where: { id } });

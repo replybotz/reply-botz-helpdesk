@@ -18,17 +18,12 @@ export const registerSchema = z.object({
   tenantSlug: z.string().min(1, 'Tenant is required'),
 });
 
+// The setup flow deliberately shares this schema: the TOTP secret is held
+// server-side between setup and verification and is never client-supplied.
 export const mfaVerifySchema = z.object({
   token: z.string().length(6, 'MFA code must be 6 digits').regex(/^\d+$/, 'MFA code must be numeric'),
-  mfaToken: z.string().optional(),
-});
-
-export const mfaSetupVerifySchema = z.object({
-  token: z.string().length(6, 'MFA code must be 6 digits').regex(/^\d+$/, 'MFA code must be numeric'),
-  secret: z.string().min(1, 'Secret is required'),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type MfaVerifyInput = z.infer<typeof mfaVerifySchema>;
-export type MfaSetupVerifyInput = z.infer<typeof mfaSetupVerifySchema>;

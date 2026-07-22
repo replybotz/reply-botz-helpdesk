@@ -1,10 +1,16 @@
 import { prisma } from '@/lib/db';
-import { verifyPassword } from '@/lib/auth/password';
+import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import { signAccessToken, signMfaToken } from '@/lib/auth/jwt';
 import { createSession } from '@/lib/auth/session';
+import { setAuthCookies, accessTokenCookie } from '@/lib/auth/cookies';
+import { enforceRateLimit, clientIp } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
 import { loginSchema } from '@/lib/validations/auth';
-import { errorResponse, AuthenticationError, TenantNotFoundError, ValidationError } from '@/lib/errors';
+import { errorResponse, AuthenticationError, ValidationError } from '@/lib/errors';
+
+// Verified in place of a real hash when the tenant or user does not exist,
+// so response timing cannot distinguish "unknown account" from "bad password".
+const dummyHashPromise = hashPassword('timing-equalizer-dummy-password');
 
 export async function POST(request: Request) {
   try {
@@ -16,49 +22,40 @@ export async function POST(request: Request) {
     }
 
     const { email, password, tenantSlug } = parsed.data;
+    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0] ?? undefined;
 
-    // Find tenant
+    await enforceRateLimit(`login:ip:${clientIp(request)}`, { max: 20, windowSec: 300 });
+    await enforceRateLimit(`login:id:${tenantSlug}:${email.toLowerCase()}`, { max: 5, windowSec: 300 });
+
     const tenant = await prisma.tenant.findUnique({
       where: { slug: tenantSlug },
       select: { id: true, status: true },
     });
 
-    if (!tenant || tenant.status !== 'ACTIVE') {
-      throw new TenantNotFoundError(tenantSlug);
-    }
+    const user =
+      tenant && tenant.status === 'ACTIVE'
+        ? await prisma.user.findUnique({
+            where: { tenantId_email: { tenantId: tenant.id, email } },
+          })
+        : null;
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { tenantId_email: { tenantId: tenant.id, email } },
-    });
-
-    if (!user) {
+    // Always verify against some hash, and always return the same error for
+    // unknown tenant, unknown user, inactive account, and wrong password.
+    const valid = await verifyPassword(user?.passwordHash ?? (await dummyHashPromise), password);
+    if (!user || !valid || user.status !== 'ACTIVE') {
       throw new AuthenticationError('Invalid email or password');
     }
 
-    if (user.status !== 'ACTIVE') {
-      throw new AuthenticationError('Account is not active');
-    }
-
-    // Verify password
-    const valid = await verifyPassword(user.passwordHash, password);
-    if (!valid) {
-      throw new AuthenticationError('Invalid email or password');
-    }
-
-    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0] ?? undefined;
-
-    // If MFA enabled, return MFA challenge
+    // If MFA enabled, set a short-lived MFA-pending cookie and challenge
     if (user.mfaEnabled) {
       const mfaToken = await signMfaToken({
         userId: user.id,
-        tenantId: tenant.id,
+        tenantId: user.tenantId,
       });
 
-      return Response.json({
-        requiresMfa: true,
-        mfaToken,
-      });
+      const response = Response.json({ requiresMfa: true });
+      response.headers.append('Set-Cookie', accessTokenCookie(mfaToken, 5 * 60));
+      return response;
     }
 
     // No MFA - issue full tokens
@@ -67,7 +64,7 @@ export async function POST(request: Request) {
 
     const accessToken = await signAccessToken({
       userId: user.id,
-      tenantId: tenant.id,
+      tenantId: user.tenantId,
       role: user.role,
       email: user.email,
     });
@@ -80,7 +77,7 @@ export async function POST(request: Request) {
 
     // Audit
     await audit({
-      tenantId: tenant.id,
+      tenantId: user.tenantId,
       userId: user.id,
       action: 'user.login',
       entityType: 'user',
@@ -91,24 +88,16 @@ export async function POST(request: Request) {
     const response = Response.json({
       user: {
         id: user.id,
-        tenantId: tenant.id,
+        tenantId: user.tenantId,
         email: user.email,
         displayName: user.displayName,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
       },
-      tokens: {
-        accessToken,
-        expiresAt: session.expiresAt,
-      },
+      expiresAt: session.expiresAt,
     });
 
-    response.headers.set(
-      'Set-Cookie',
-      `refreshToken=${session.refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=${7 * 24 * 60 * 60}`,
-    );
-
-    return response;
+    return setAuthCookies(response, { accessToken, refreshToken: session.refreshToken });
   } catch (error) {
     return errorResponse(error);
   }

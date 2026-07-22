@@ -9,20 +9,14 @@ export interface AuthUser {
   mfaEnabled: boolean;
 }
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: Date;
-}
-
 export interface LoginResponse {
   user: AuthUser;
-  tokens: AuthTokens;
+  /** Auth tokens are delivered as httpOnly cookies, not in the body. */
+  expiresAt: Date;
 }
 
 export interface MfaPendingResponse {
   requiresMfa: true;
-  mfaToken: string;
 }
 
 export type AuthResponse = LoginResponse | MfaPendingResponse;

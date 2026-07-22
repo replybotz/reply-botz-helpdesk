@@ -37,13 +37,20 @@ export async function validateSession(refreshToken: string): Promise<{
 
   const session = await prisma.session.findUnique({
     where: { refreshToken: hashed },
-    select: { id: true, userId: true, expiresAt: true },
+    select: { id: true, userId: true, expiresAt: true, revokedAt: true },
   });
 
-  if (!session || session.expiresAt < new Date()) {
-    if (session) {
-      await prisma.session.delete({ where: { id: session.id } });
-    }
+  if (!session) return null;
+
+  // A rotated-out token being presented again means it was stolen (or the
+  // legitimate client fell out of sync); revoke everything for this user.
+  if (session.revokedAt) {
+    await revokeAllUserSessions(session.userId);
+    return null;
+  }
+
+  if (session.expiresAt < new Date()) {
+    await prisma.session.delete({ where: { id: session.id } });
     return null;
   }
 
@@ -58,17 +65,28 @@ export async function rotateSession(params: {
   const validated = await validateSession(params.oldRefreshToken);
   if (!validated) return null;
 
-  // Delete old session
-  await prisma.session.delete({ where: { id: validated.sessionId } });
+  const refreshToken = generateRefreshToken();
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-  // Create new session
-  const newSession = await createSession({
-    userId: validated.userId,
-    userAgent: params.userAgent,
-    ipAddress: params.ipAddress,
-  });
+  // Mark old and create new atomically; the old row is kept (until expiry
+  // cleanup) so presenting it again can be detected as reuse.
+  await prisma.$transaction([
+    prisma.session.update({
+      where: { id: validated.sessionId },
+      data: { revokedAt: new Date() },
+    }),
+    prisma.session.create({
+      data: {
+        userId: validated.userId,
+        refreshToken: hashToken(refreshToken),
+        userAgent: params.userAgent,
+        ipAddress: params.ipAddress,
+        expiresAt,
+      },
+    }),
+  ]);
 
-  return { ...newSession, userId: validated.userId };
+  return { refreshToken, expiresAt, userId: validated.userId };
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {
