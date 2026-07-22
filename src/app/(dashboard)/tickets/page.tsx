@@ -2,6 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useApi } from '@/lib/api/use-api';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
+import { TICKET_STATUS_COLORS, PRIORITY_COLORS, PRIORITY_OPTIONS, formatEnum } from '@/lib/constants/status';
 
 interface Ticket {
   id: string;
@@ -12,47 +18,30 @@ interface Ticket {
   assignee?: { displayName: string | null; email: string } | null;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  WAITING_ON_CUSTOMER: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  WAITING_ON_THIRD_PARTY: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  RESOLVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  CLOSED: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200',
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  LOW: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
-  MEDIUM: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300',
-  HIGH: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300',
-  URGENT: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300',
-};
+const inputClasses =
+  'mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50';
 
 export default function TicketsPage() {
-  const [tickets] = useState<Ticket[]>([]);
+  const { data, loading, error: loadError, reload } = useApi<{ tickets: Ticket[] }>('/api/tickets');
+  const tickets = data?.tickets ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ subject: '', description: '', priority: 'MEDIUM' });
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSaving(true);
     try {
-      const res = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to create ticket');
-        return;
-      }
+      await apiFetch('/api/tickets', { method: 'POST', body: JSON.stringify(form) });
       setShowCreate(false);
       setForm({ subject: '', description: '', priority: 'MEDIUM' });
-      window.location.reload();
-    } catch {
-      setError('Network error');
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -65,12 +54,7 @@ export default function TicketsPage() {
             Manage support tickets and track resolution progress.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          Create Ticket
-        </button>
+        <Button onClick={() => setShowCreate(!showCreate)}>Create Ticket</Button>
       </div>
 
       {showCreate && (
@@ -79,58 +63,74 @@ export default function TicketsPage() {
           className="mt-6 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
         >
           <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">New Ticket</h2>
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && (
+            <Alert tone="error" className="mb-4">
+              {error}
+            </Alert>
+          )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Subject</label>
+              <label htmlFor="ticket-subject" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Subject
+              </label>
               <input
+                id="ticket-subject"
                 type="text"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Description</label>
+              <label
+                htmlFor="ticket-description"
+                className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              >
+                Description
+              </label>
               <textarea
+                id="ticket-description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={4}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Priority</label>
+              <label htmlFor="ticket-priority" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Priority
+              </label>
               <select
+                id="ticket-priority"
                 value={form.priority}
                 onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
+                {PRIORITY_OPTIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {formatEnum(p)}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex gap-3">
-              <button
-                type="submit"
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900"
-              >
-                Create
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300"
-              >
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Creating…' : 'Create'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </form>
+      )}
+
+      {loadError && (
+        <Alert tone="error" className="mt-6">
+          Failed to load tickets: {loadError}
+        </Alert>
       )}
 
       <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -145,7 +145,13 @@ export default function TicketsPage() {
             </tr>
           </thead>
           <tbody>
-            {tickets.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
+                  Loading tickets…
+                </td>
+              </tr>
+            ) : tickets.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
                   No tickets yet. Create your first ticket to get started.
@@ -163,14 +169,10 @@ export default function TicketsPage() {
                     </Link>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${STATUS_COLORS[ticket.status] || ''}`}>
-                      {ticket.status.replace(/_/g, ' ')}
-                    </span>
+                    <Badge className={TICKET_STATUS_COLORS[ticket.status]}>{formatEnum(ticket.status)}</Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${PRIORITY_COLORS[ticket.priority] || ''}`}>
-                      {ticket.priority}
-                    </span>
+                    <Badge className={PRIORITY_COLORS[ticket.priority]}>{ticket.priority}</Badge>
                   </td>
                   <td className="px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400">
                     {ticket.assignee?.displayName || ticket.assignee?.email || 'Unassigned'}

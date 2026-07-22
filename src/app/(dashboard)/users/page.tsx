@@ -1,6 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useApi } from '@/lib/api/use-api';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
+import { ROLE_COLORS, USER_STATUS_COLORS, formatEnum } from '@/lib/constants/status';
 
 interface User {
   id: string;
@@ -13,23 +19,12 @@ interface User {
   createdAt: string;
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  SUPER_ADMIN: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  TENANT_ADMIN: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  SUPERVISOR: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  AGENT: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  CUSTOMER: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  INACTIVE: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
-  SUSPENDED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  PENDING_VERIFICATION: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-};
+const inputClasses =
+  'mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50';
 
 export default function UsersPage() {
-  const [users] = useState<User[]>([]);
+  const { data, loading, error: loadError, reload } = useApi<{ users: User[] }>('/api/users');
+  const users = data?.users ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
     email: '',
@@ -38,26 +33,21 @@ export default function UsersPage() {
     role: 'AGENT' as string,
   });
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSaving(true);
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to create user');
-        return;
-      }
+      await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(form) });
       setShowCreate(false);
       setForm({ email: '', password: '', displayName: '', role: 'AGENT' });
-      window.location.reload();
-    } catch {
-      setError('Network error');
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -70,12 +60,7 @@ export default function UsersPage() {
             Manage team members, agents, and customer accounts.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          Add User
-        </button>
+        <Button onClick={() => setShowCreate(!showCreate)}>Add User</Button>
       </div>
 
       {showCreate && (
@@ -84,44 +69,60 @@ export default function UsersPage() {
           className="mt-6 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
         >
           <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">New User</h2>
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && (
+            <Alert tone="error" className="mb-4">
+              {error}
+            </Alert>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Email</label>
+              <label htmlFor="user-email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Email
+              </label>
               <input
+                id="user-email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Display Name</label>
+              <label htmlFor="user-name" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Display Name
+              </label>
               <input
+                id="user-name"
                 type="text"
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Password</label>
+              <label htmlFor="user-password" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Password
+              </label>
               <input
+                id="user-password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Role</label>
+              <label htmlFor="user-role" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Role
+              </label>
               <select
+                id="user-role"
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
               >
                 <option value="TENANT_ADMIN">Tenant Admin</option>
                 <option value="SUPERVISOR">Supervisor</option>
@@ -131,21 +132,20 @@ export default function UsersPage() {
             </div>
           </div>
           <div className="mt-4 flex gap-3">
-            <button
-              type="submit"
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900"
-            >
-              Create User
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreate(false)}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300"
-            >
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Creating…' : 'Create User'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
+      )}
+
+      {loadError && (
+        <Alert tone="error" className="mt-6">
+          Failed to load users: {loadError}
+        </Alert>
       )}
 
       <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -160,7 +160,13 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
+                  Loading users…
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
                   No users to display. Add a user to get started.
@@ -181,14 +187,10 @@ export default function UsersPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${ROLE_COLORS[user.role] || ''}`}>
-                      {user.role.replace(/_/g, ' ')}
-                    </span>
+                    <Badge className={ROLE_COLORS[user.role]}>{formatEnum(user.role)}</Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${STATUS_COLORS[user.status] || ''}`}>
-                      {user.status.replace(/_/g, ' ')}
-                    </span>
+                    <Badge className={USER_STATUS_COLORS[user.status]}>{formatEnum(user.status)}</Badge>
                   </td>
                   <td className="px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400">
                     {user.mfaEnabled ? 'Enabled' : 'Disabled'}

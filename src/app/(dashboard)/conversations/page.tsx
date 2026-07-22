@@ -2,6 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useApi } from '@/lib/api/use-api';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
+import { CHANNEL_LABELS, CONVERSATION_STATUS_COLORS } from '@/lib/constants/status';
 
 interface Conversation {
   id: string;
@@ -12,50 +19,28 @@ interface Conversation {
   messages: { content: string; role: string; createdAt: string }[];
 }
 
-const CHANNEL_LABELS: Record<string, string> = {
-  LIVE_CHAT: 'Live Chat',
-  EMAIL: 'Email',
-  VOICE: 'Voice',
-  WHATSAPP: 'WhatsApp',
-  FACEBOOK: 'Facebook',
-  TELEGRAM: 'Telegram',
-  SLACK: 'Slack',
-  TWITTER: 'Twitter',
-  API: 'API',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  ASSIGNED: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  PENDING: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  RESOLVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  CLOSED: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200',
-};
-
 export default function ConversationsPage() {
-  const [conversations] = useState<Conversation[]>([]);
+  const router = useRouter();
+  const { data, loading, error: loadError } = useApi<{ conversations: Conversation[] }>('/api/conversations');
+  const conversations = data?.conversations ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [channel, setChannel] = useState('LIVE_CHAT');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSaving(true);
     try {
-      const res = await fetch('/api/conversations', {
+      const conversation = await apiFetch<{ id: string }>('/api/conversations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to create conversation');
-        return;
-      }
-      const data = await res.json();
-      window.location.href = `/conversations/${data.id}`;
-    } catch {
-      setError('Network error');
+      router.push(`/conversations/${conversation.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+      setSaving(false);
     }
   }
 
@@ -68,12 +53,7 @@ export default function ConversationsPage() {
             Manage customer conversations across all channels.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          New Conversation
-        </button>
+        <Button onClick={() => setShowCreate(!showCreate)}>New Conversation</Button>
       </div>
 
       {showCreate && (
@@ -82,11 +62,18 @@ export default function ConversationsPage() {
           className="mt-6 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
         >
           <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Start Conversation</h2>
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && (
+            <Alert tone="error" className="mb-4">
+              {error}
+            </Alert>
+          )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Channel</label>
+              <label htmlFor="conversation-channel" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Channel
+              </label>
               <select
+                id="conversation-channel"
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
@@ -99,26 +86,29 @@ export default function ConversationsPage() {
               </select>
             </div>
             <div className="flex gap-3">
-              <button
-                type="submit"
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900"
-              >
-                Start
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300"
-              >
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Starting…' : 'Start'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </form>
       )}
 
+      {loadError && (
+        <Alert tone="error" className="mt-6">
+          Failed to load conversations: {loadError}
+        </Alert>
+      )}
+
       <div className="mt-6 space-y-3">
-        {conversations.length === 0 ? (
+        {loading ? (
+          <div className="rounded-xl border border-zinc-200 bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-sm text-zinc-500">Loading conversations…</p>
+          </div>
+        ) : conversations.length === 0 ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm text-zinc-500">No conversations yet. Start a new conversation to begin.</p>
           </div>
@@ -135,9 +125,7 @@ export default function ConversationsPage() {
                     {conv.customer?.displayName || conv.customer?.email || 'Unknown'}
                   </span>
                   <span className="text-xs text-zinc-500">{CHANNEL_LABELS[conv.channel] || conv.channel}</span>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[conv.status] || ''}`}>
-                    {conv.status}
-                  </span>
+                  <Badge className={CONVERSATION_STATUS_COLORS[conv.status]}>{conv.status}</Badge>
                 </div>
                 <span className="text-xs text-zinc-400">{new Date(conv.createdAt).toLocaleDateString()}</span>
               </div>

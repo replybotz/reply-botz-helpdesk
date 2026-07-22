@@ -3,6 +3,11 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useApi } from '@/lib/api/use-api';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { MESSAGE_ROLE_COLORS } from '@/lib/constants/status';
 
 interface Message {
   id: string;
@@ -12,40 +17,45 @@ interface Message {
   sender?: { displayName: string | null; email: string; role: string } | null;
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  CUSTOMER: 'bg-blue-50 dark:bg-blue-950',
-  AGENT: 'bg-white dark:bg-zinc-900',
-  AI: 'bg-purple-50 dark:bg-purple-950',
-  SYSTEM: 'bg-zinc-50 dark:bg-zinc-950',
-};
+interface Conversation {
+  id: string;
+  channel: string;
+  status: string;
+  customer: { id: string; displayName: string | null; email: string } | null;
+  messages: Message[];
+}
 
 export default function ConversationDetailPage() {
-  const params = useParams();
-  const conversationId = params.id as string;
-  const [messages] = useState<Message[]>([]);
+  const params = useParams<{ id: string }>();
+  const conversationId = params.id;
+  const {
+    data: conversation,
+    loading,
+    error: loadError,
+    reload,
+  } = useApi<Conversation>(`/api/conversations/${conversationId}`);
+  const messages = conversation?.messages ?? [];
   const [newMessage, setNewMessage] = useState('');
   const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!newMessage.trim()) return;
     setError('');
+    setSending(true);
 
     try {
-      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+      await apiFetch(`/api/conversations/${conversationId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newMessage }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to send');
-        return;
-      }
       setNewMessage('');
-      window.location.reload();
-    } catch {
-      setError('Network error');
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+    } finally {
+      setSending(false);
     }
   }
 
@@ -57,20 +67,30 @@ export default function ConversationDetailPage() {
             &larr; Back to Conversations
           </Link>
           <h1 className="mt-2 text-xl font-bold text-zinc-900 dark:text-zinc-50">
-            Conversation #{conversationId.slice(0, 8)}
+            {conversation?.customer?.displayName ||
+              conversation?.customer?.email ||
+              `Conversation #${conversationId.slice(0, 8)}`}
           </h1>
         </div>
       </div>
 
+      {loadError && (
+        <Alert tone="error" className="mb-4">
+          Failed to load conversation: {loadError}
+        </Alert>
+      )}
+
       <div className="flex-1 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        {messages.length === 0 ? (
+        {loading ? (
+          <p className="py-12 text-center text-sm text-zinc-500">Loading messages…</p>
+        ) : messages.length === 0 ? (
           <p className="py-12 text-center text-sm text-zinc-500">
             No messages yet. Send a message to start the conversation.
           </p>
         ) : (
           <div className="space-y-3">
             {messages.map((msg) => (
-              <div key={msg.id} className={`rounded-lg border border-zinc-200 p-4 dark:border-zinc-800 ${ROLE_COLORS[msg.role] || ''}`}>
+              <div key={msg.id} className={`rounded-lg border border-zinc-200 p-4 dark:border-zinc-800 ${MESSAGE_ROLE_COLORS[msg.role] || ''}`}>
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                     {msg.sender?.displayName || msg.sender?.email || msg.role}
@@ -86,22 +106,27 @@ export default function ConversationDetailPage() {
         )}
       </div>
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && (
+        <Alert tone="error" className="mt-2">
+          {error}
+        </Alert>
+      )}
 
       <form onSubmit={handleSend} className="mt-4 flex gap-3">
+        <label htmlFor="message-input" className="sr-only">
+          Message
+        </label>
         <input
+          id="message-input"
           type="text"
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Type a message..."
           className="flex-1 rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
         />
-        <button
-          type="submit"
-          className="rounded-lg bg-zinc-900 px-6 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900"
-        >
-          Send
-        </button>
+        <Button type="submit" size="lg" disabled={sending}>
+          {sending ? 'Sending…' : 'Send'}
+        </Button>
       </form>
     </div>
   );

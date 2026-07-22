@@ -2,6 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useApi } from '@/lib/api/use-api';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
+import { ARTICLE_STATUS_COLORS } from '@/lib/constants/status';
 
 interface Article {
   id: string;
@@ -13,25 +19,24 @@ interface Article {
   updatedAt: string;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  PUBLISHED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  ARCHIVED: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
-};
+const inputClasses =
+  'mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50';
 
 export default function KnowledgeBasePage() {
-  const [articles] = useState<Article[]>([]);
+  const { data, loading, error: loadError, reload } = useApi<{ articles: Article[] }>('/api/kb');
+  const articles = data?.articles ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: '', content: '', tags: '', status: 'DRAFT' as string });
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSaving(true);
     try {
-      const res = await fetch('/api/kb', {
+      await apiFetch('/api/kb', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: form.title,
           content: form.content,
@@ -42,16 +47,13 @@ export default function KnowledgeBasePage() {
           status: form.status,
         }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to create article');
-        return;
-      }
       setShowCreate(false);
       setForm({ title: '', content: '', tags: '', status: 'DRAFT' });
-      window.location.reload();
-    } catch {
-      setError('Network error');
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -64,12 +66,7 @@ export default function KnowledgeBasePage() {
             Create and manage help articles for customers and agents.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          New Article
-        </button>
+        <Button onClick={() => setShowCreate(!showCreate)}>New Article</Button>
       </div>
 
       {showCreate && (
@@ -78,72 +75,89 @@ export default function KnowledgeBasePage() {
           className="mt-6 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
         >
           <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">New Article</h2>
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && (
+            <Alert tone="error" className="mb-4">
+              {error}
+            </Alert>
+          )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Title</label>
+              <label htmlFor="article-title" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Title
+              </label>
               <input
+                id="article-title"
                 type="text"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Content</label>
+              <label htmlFor="article-content" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Content
+              </label>
               <textarea
+                id="article-content"
                 value={form.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
                 rows={8}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <label htmlFor="article-tags" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Tags (comma-separated)
               </label>
               <input
+                id="article-tags"
                 type="text"
                 value={form.tags}
                 onChange={(e) => setForm({ ...form, tags: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
                 placeholder="faq, getting-started, billing"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Status</label>
+              <label htmlFor="article-status" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Status
+              </label>
               <select
+                id="article-status"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={inputClasses}
               >
                 <option value="DRAFT">Draft</option>
                 <option value="PUBLISHED">Published</option>
               </select>
             </div>
             <div className="flex gap-3">
-              <button
-                type="submit"
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900"
-              >
-                Create Article
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300"
-              >
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Creating…' : 'Create Article'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </form>
       )}
 
+      {loadError && (
+        <Alert tone="error" className="mt-6">
+          Failed to load articles: {loadError}
+        </Alert>
+      )}
+
       <div className="mt-6 space-y-3">
-        {articles.length === 0 ? (
+        {loading ? (
+          <div className="rounded-xl border border-zinc-200 bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-sm text-zinc-500">Loading articles…</p>
+          </div>
+        ) : articles.length === 0 ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm text-zinc-500">No articles yet. Create your first knowledge base article.</p>
           </div>
@@ -156,9 +170,7 @@ export default function KnowledgeBasePage() {
             >
               <div className="flex items-center justify-between">
                 <h3 className="font-medium text-zinc-900 dark:text-zinc-50">{article.title}</h3>
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[article.status] || ''}`}>
-                  {article.status}
-                </span>
+                <Badge className={ARTICLE_STATUS_COLORS[article.status]}>{article.status}</Badge>
               </div>
               <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
                 <span>{article.views} views</span>
