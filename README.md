@@ -1,157 +1,119 @@
-=== Reply Botz Helpdesk ===
-Contributors: replybotz.com
-Tags:  livechat, chat, live chat, chatbot, free-live-chat, free live chat, live-chat, live chat, live support, chat-plugin, bot, chat plugin, chat bot
-Requires at least: 3.0.0
-Tested up to: 6.8.3
-Requires PHP: 7.4
-Stable tag: 1.0.7
-License: MIT
-License URI: https://opensource.org/licenses/MIT
-A Free one-click-to-install Live Chat plugin. No coding skills required. Used by more than 2000 customers on WordPress.
+# Reply Botz HD - AI-First Helpdesk System
 
-== Description ==
+An open-source (MIT), AI-first helpdesk platform with multi-channel support, multi-tenancy, and white-label capabilities.
 
-Automate your customers' communication with artificial intelligence-driven bots and a chat system optimized for conversational marketing. 
-Save time, increase revenues, and use the software you already know and love.
-Here's how our Live Chat plugin will help you capture more leads and enhance your conversions rates.
+## Features
 
-### Live chat 
-Reply Botz allows you to embed a free live chat module on your website and let site visitors chat with you. 
-Using the plugin, you can easily handle the following WordPress live chat
+- **AI Chat System** - Real-time AI-powered chat with multi-channel support
+- **AI Ticket/Email System** - Automated classification, routing, and SLA management
+- **AI Voice Agents** - Phone and web-based voice support
+- **Knowledge Base** - Self-learning article generation from interactions
+- **AI Model Management** - BYOK support for multiple AI providers
+- **Human Handoff** - Seamless AI-to-human escalation
+- **White-Label** - Full branding customization
+- **Multi-Tenant** - Isolated data with shared infrastructure
 
-* Support live chat: answer questions your users might have about your business through live chat.
-* Sales live chat: help answer questions your potential customers might have about your products/services through live chat.
-* Marketing live chat: create emails or phone number lists, synchronize WooCommerce. Details [here](https://replybotz.com/marketing).
-* Automated chatbot: create powerful scenario with by connecting the Dialogflow chatbot. Details [here](https://replybotz.com/chatbot).
+## Tech Stack
 
-### Real-time notifications 
-Don't lose visitors. Actively engage them instead with a complete set of notifications.
-The following notification types are available: email, push notifications, desktop notifications, text message notifications, flash notifications, sounds, red counter.
-Update the browser tab title each time a new message is received.
- 
-### Mobile app for Android and iOS
-Turn your Android or iOS device into a customer service hub and chat with your users via our innovative progressive web app for Android and iOS. 
-It's fast and it works great. The Reply Botz administration area is a progressive web app that can be installed on Windows and Macs. 
-It runs like any other software on your computer or and any other app on your mobile device.
+- **Framework**: Next.js 16 (App Router) + TypeScript
+- **Database**: PostgreSQL + Prisma ORM
+- **Cache**: Redis
+- **Search**: Meilisearch
+- **UI**: Tailwind CSS + shadcn/ui
+- **Auth**: Custom JWT + Argon2 + TOTP MFA
+- **Queue**: BullMQ
+- **Monitoring**: Prometheus + Grafana + Loki
 
-### Support features
+## Quick Start
 
-* Support
-* Manage Conversations
-* Knowledge Base Articles
-* Message Editor
-* Saved Replies
-* Departments
-* Notifications
-* Real-Time Queue
-* Direct Message
-* Email Piping
-* Omni-Channel
-* AI Translations in Real-Time
-* AI Smart Reply
-* Reports
-* Agent Ratings
-* Tickets
-* Offline Message
-* More Features
+### Prerequisites
 
-### Chatbot features
+- Node.js 20+
+- PostgreSQL 16+
+- Redis 7+
 
-* Automated Communication
-* Easy to Use
-* Ready Templates
-* Benefits
-* Bot Training
-* Rich Messages
-* Human Takeover
-* Multilingual
-* Knowledge Base
-* WooCommerce Integration
-* Works with Facebook, Telegram and More
-* AI Artificial Intelligence
-* Analytics
-* Actions
-* Dialogflow CX and ES
-* More Features
+### Guided Install (recommended)
 
-### Marketing features
+```bash
+# Terminal installer — generates .env, starts Docker services, migrates + seeds
+./install.sh            # production mode
+./install.sh --dev      # development mode (hot reload)
 
-* Popup Message
-* Welcome Message
-* Follow Up Message
-* Subscribe Message
-* Newsletter Subscription
-* Automations and Triggers
-* Multi-Users Direct Message
-* WooCommerce
-* Chat Bot
-* Social Share
-* Pro-active Chat
-* Rich Messages
+# Or the browser-based wizard
+./install.sh --gui
+```
 
-###Users features
+### Development Setup (manual)
 
-* Registration and Login
-* Manage Users and Agents
-* Find, Sort and Filter
-* Get to Know Your Customers
-* AI Language detection
+```bash
+# Install dependencies
+npm install
 
-### Developers features
+# Copy environment config (Docker Compose reads ${VAR} values from .env)
+cp .env.example .env
 
-* Web API
-* JavaScript API
-* PHP API
-* Use cases
+# Generate Prisma client
+npx prisma generate
 
-### More features
+# Run database migrations
+npx prisma migrate deploy
 
-* Mobile App
-* Progressive Web App
-* WordPress Integration
-* Multilingual and RTL
-* Privacy Acceptance and GDPR
-* Design Customization
-* White Label
-* Security
-* Panel and Full-Screen Chat
-* Performance
-* Data and Privacy
-* Departments
-* More Features
+# Seed the database
+npm run db:seed
 
+# Start development server
+npm run dev
+```
 
-== FAQ ==
+### Docker Setup (manual)
 
-= Installation =
+```bash
+# Copy environment config and fill in real secrets
+cp .env.example .env
 
-Register a new account at [https://chat.replybotz.com/](https://chat.replybotz.com/).
-Upload the plugin folder to the `/wp-content/plugins/` directory, or install the plugin through the WordPress plugins screen directly.
-From the WordPress admin area go to Settings > Reply Botz  and insert the embed code of the chat (get it from https://chat.replybotz.com/account/account/).
-Use the shortcode [rb-tickets] to display the ticket area. Use the shortcode [rb-articles] to display the articles area.
+# Start all services
+docker compose up -d
 
-= What is Reply Botz Helpdesk=
+# Run migrations + seed (one-shot service with the Prisma CLI)
+docker compose run --rm migrate
 
-Reply Botz provides a customer messaging platform for small and medium companies to help them scale their customers relationship. Live Chat and the chatbot are two of the main features but not the only ones. Give them a try!
+# For development (hot reload, no nginx/ssl)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
 
-= Who should use Reply Botz Live Chat? =
+Seeded logins default to `admin@replybotz.com` (tenant `system`) and
+`admin@demo.com` (tenant `demo`); set `SEED_ADMIN_EMAIL` /
+`SEED_ADMIN_PASSWORD` in `.env` before seeding to override.
 
-Reply Botz is perfect for agencies, business owners, small businesses, bloggers, designers, anyone with a WordPress website and wants to use live chat on their website.
+### Checks
 
-= Do I need coding skills to use Reply Botz Wordpress plugin? =
+```bash
+npm run lint        # eslint
+npm run typecheck   # tsc --noEmit
+npm test            # jest (node + jsdom projects)
+```
 
-Not at all. You can create and manage your conversations without any coding using our user-friendly software.
+## Project Structure
 
-= How can I upgrade to paid features? =
+```
+src/
+├── app/              # Next.js App Router pages and API routes
+├── components/       # React components
+├── lib/              # Core library code
+│   ├── auth/         # JWT, password hashing, MFA, sessions
+│   ├── tenant/       # Multi-tenant context, middleware, RLS
+│   └── rbac/         # Permissions, roles, route guards
+├── types/            # TypeScript type definitions
+└── proxy.ts          # Next.js proxy (edge auth gate; middleware was renamed in Next 16)
+```
 
-The Reply Botz's paid tiers are built for those who send a large volume of messages. For more details, [view our pricing page](https://replybotz.com/cloud/wordpress).
+## Architecture
 
-== Screenshots ==
+- **Multi-tenant**: Row-level data isolation with `tenant_id` on every table
+- **RBAC**: 5 roles (Super Admin, Tenant Admin, Supervisor, Agent, Customer) with 30+ granular permissions
+- **Auth**: Custom JWT with access/refresh token rotation, MFA support
+- **Security**: AES-256-GCM encryption for API keys, Argon2id password hashing
 
-1. Dashboard
-2. Users area
-3. Chat
+## License
 
-== Changelog ==
-
-https://replybotz.com/changes
+MIT License - see [LICENSE](LICENSE) for details.
