@@ -7,14 +7,18 @@ import { updateConversationSchema } from '@/lib/validations/conversations';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
 export const GET = withPermission(
-  Permission.CONVERSATION_READ,
+  [Permission.CONVERSATION_READ, Permission.CONVERSATION_READ_OWN],
   async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
     try {
       const { id } = await routeCtx.params;
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
+      // Customers may only see their own conversations
+      const where: Record<string, unknown> = { id };
+      if (ctx.role === 'CUSTOMER') where.customerId = ctx.userId;
+
       const conversation = await db.conversation.findFirst({
-        where: { id },
+        where,
         include: {
           customer: { select: { id: true, displayName: true, email: true } },
           messages: {

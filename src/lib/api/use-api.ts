@@ -6,6 +6,8 @@ import { apiFetch, ApiError } from './client';
 interface ApiResult<T> {
   /** Which fetch `version` this result belongs to. */
   version: number;
+  /** Which path this result was fetched from. */
+  path: string | null;
   data: T | null;
   error: string;
 }
@@ -16,7 +18,7 @@ interface ApiResult<T> {
  */
 export function useApi<T>(path: string | null) {
   const [version, setVersion] = useState(0);
-  const [result, setResult] = useState<ApiResult<T>>({ version: -1, data: null, error: '' });
+  const [result, setResult] = useState<ApiResult<T>>({ version: -1, path: null, data: null, error: '' });
 
   useEffect(() => {
     if (path === null) return;
@@ -24,12 +26,13 @@ export function useApi<T>(path: string | null) {
 
     apiFetch<T>(path)
       .then((data) => {
-        if (!cancelled) setResult({ version, data, error: '' });
+        if (!cancelled) setResult({ version, path, data, error: '' });
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           setResult({
             version,
+            path,
             data: null,
             error: err instanceof ApiError ? err.message : 'Something went wrong',
           });
@@ -43,10 +46,14 @@ export function useApi<T>(path: string | null) {
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
+  // Loading whenever the current (path, version) hasn't produced a result
+  // yet — including after a path change, not just reload().
+  const loading = path !== null && (result.version !== version || result.path !== path);
+
   return {
-    data: result.data,
-    error: result.error,
-    loading: path !== null && result.version !== version,
+    data: loading ? null : result.data,
+    error: loading ? '' : result.error,
+    loading,
     reload,
   };
 }

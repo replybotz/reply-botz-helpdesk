@@ -22,9 +22,11 @@ export const POST = withPermission(
 
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
-      const conversation = await db.conversation.findFirst({
-        where: { id: conversationId },
-      });
+      // Customers may only post into their own conversations
+      const where: Record<string, unknown> = { id: conversationId };
+      if (ctx.role === 'CUSTOMER') where.customerId = ctx.userId;
+
+      const conversation = await db.conversation.findFirst({ where });
       if (!conversation) throw new NotFoundError('Conversation');
 
       // Provenance is derived from the authenticated role, never from the

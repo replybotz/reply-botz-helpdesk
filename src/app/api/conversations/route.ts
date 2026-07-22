@@ -7,7 +7,7 @@ import { createConversationSchema } from '@/lib/validations/conversations';
 import { errorResponse, AuthorizationError, ValidationError } from '@/lib/errors';
 
 export const GET = withPermission(
-  Permission.CONVERSATION_READ,
+  [Permission.CONVERSATION_READ, Permission.CONVERSATION_READ_OWN],
   async (req: Request, ctx: RouteContext) => {
     try {
       const db = prisma.$extends(withTenantScope(ctx.tenantId));

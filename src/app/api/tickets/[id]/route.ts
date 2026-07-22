@@ -6,13 +6,17 @@ import { audit } from '@/lib/audit';
 import { updateTicketSchema } from '@/lib/validations/tickets';
 import { errorResponse, NotFoundError, ValidationError } from '@/lib/errors';
 
-export const GET = withPermission(Permission.TICKET_READ, async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
+export const GET = withPermission([Permission.TICKET_READ, Permission.TICKET_READ_OWN], async (req: Request, ctx: RouteContext, routeCtx: RouteHandlerContext) => {
   try {
     const { id } = await routeCtx.params;
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
+    // Customers may only see tickets on their own conversations
+    const where: Record<string, unknown> = { id };
+    if (ctx.role === 'CUSTOMER') where.conversation = { customerId: ctx.userId };
+
     const ticket = await db.ticket.findFirst({
-      where: { id },
+      where,
       include: {
         assignee: { select: { id: true, displayName: true, email: true } },
         conversation: {

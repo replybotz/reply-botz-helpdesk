@@ -93,7 +93,9 @@ function assertSafeValue(name, value) {
 }
 
 function envQuote(value) {
-  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  // `$` must be doubled or docker compose's env-file interpolation treats it
+  // as a variable reference and silently mangles the value.
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '$$$$')}"`;
 }
 
 function envLine(key, value) {

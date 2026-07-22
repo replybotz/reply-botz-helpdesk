@@ -6,7 +6,7 @@ import { audit } from '@/lib/audit';
 import { createTicketSchema } from '@/lib/validations/tickets';
 import { errorResponse, ValidationError } from '@/lib/errors';
 
-export const GET = withPermission(Permission.TICKET_READ, async (req: Request, ctx: RouteContext) => {
+export const GET = withPermission([Permission.TICKET_READ, Permission.TICKET_READ_OWN], async (req: Request, ctx: RouteContext) => {
   try {
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
     const url = new URL(req.url);
@@ -55,6 +55,21 @@ export const POST = withPermission(Permission.TICKET_CREATE, async (req: Request
     }
 
     const db = prisma.$extends(withTenantScope(ctx.tenantId));
+
+    // Any linked conversation must exist in this tenant, and customers may
+    // only attach tickets to their own conversations.
+    if (parsed.data.conversationId) {
+      const conversationWhere: Record<string, unknown> = { id: parsed.data.conversationId };
+      if (ctx.role === 'CUSTOMER') conversationWhere.customerId = ctx.userId;
+      const conversation = await db.conversation.findFirst({
+        where: conversationWhere,
+        select: { id: true },
+      });
+      if (!conversation) {
+        throw new ValidationError('Validation failed', { conversationId: ['Unknown conversation'] });
+      }
+    }
+
     const ticket = await db.ticket.create({
       data: {
         tenantId: ctx.tenantId,

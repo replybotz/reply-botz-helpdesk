@@ -36,15 +36,17 @@ describe('isRateLimited', () => {
     expect(await isRateLimited('login:x', { max: 5, windowSec: 300 })).toBe(true);
   });
 
-  it('sets the window expiry on the first hit only', async () => {
+  it('always offers a TTL with NX so lost expiries self-heal', async () => {
     mockRedis.incr.mockResolvedValue(1);
     await isRateLimited('login:x', { max: 5, windowSec: 300 });
-    expect(mockRedis.expire).toHaveBeenCalledWith('rl:login:x', 300);
+    expect(mockRedis.expire).toHaveBeenCalledWith('rl:login:x', 300, 'NX');
 
+    // Later hits still offer the TTL (NX makes it a no-op when one exists),
+    // healing keys whose initial EXPIRE was lost mid-crash.
     mockRedis.expire.mockClear();
     mockRedis.incr.mockResolvedValue(2);
     await isRateLimited('login:x', { max: 5, windowSec: 300 });
-    expect(mockRedis.expire).not.toHaveBeenCalled();
+    expect(mockRedis.expire).toHaveBeenCalledWith('rl:login:x', 300, 'NX');
   });
 
   it('fails open when redis is unavailable', async () => {

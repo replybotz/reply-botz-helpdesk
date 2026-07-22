@@ -26,8 +26,14 @@ export interface RouteHandlerContext<P = Record<string, string>> {
   params: Promise<P>;
 }
 
+/**
+ * Wrap a route handler with an RBAC check. Passing an array grants access
+ * when ANY of the permissions match (e.g. TICKET_READ for staff alongside
+ * TICKET_READ_OWN for customers — the handler must then scope customer
+ * queries itself).
+ */
 export function withPermission<P = Record<string, string>>(
-  permission: PermissionKey,
+  permission: PermissionKey | PermissionKey[],
   handler: (req: Request, context: RouteContext, routeCtx: RouteHandlerContext<P>) => Promise<Response>,
 ) {
   return async (req: Request, routeCtx: RouteHandlerContext<P>) => {
@@ -40,7 +46,8 @@ export function withPermission<P = Record<string, string>>(
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!hasPermission(userRole as UserRole, permission)) {
+    const required = Array.isArray(permission) ? permission : [permission];
+    if (!hasAnyPermission(userRole as UserRole, required)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

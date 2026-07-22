@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { resolveTenantSlug } from '@/lib/tenant/middleware';
 
-const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/health'];
+// Logout is public: it authenticates itself via the refresh-token cookie and
+// must work for expired-access and MFA-pending sessions alike.
+const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/logout', '/api/health'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));

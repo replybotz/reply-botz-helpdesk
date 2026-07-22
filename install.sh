@@ -32,7 +32,10 @@ for arg in "$@"; do
     --monitoring) MONITORING=true ;;
     --down)
       echo -e "${CYAN}Stopping all services...${NC}"
-      docker compose -f docker-compose.yml -f docker-compose.dev.yml down 2>/dev/null || true
+      # Dummy values keep compose's ${VAR:?} interpolation happy when .env
+      # is absent — `down` doesn't use them.
+      POSTGRES_PASSWORD=x REDIS_PASSWORD=x MEILI_MASTER_KEY=x GRAFANA_PASSWORD=x \
+        docker compose -f docker-compose.yml -f docker-compose.dev.yml down
       echo -e "${GREEN}Done.${NC}"
       exit 0
       ;;
@@ -40,7 +43,8 @@ for arg in "$@"; do
       echo -e "${RED}WARNING: This will destroy all data (database, cache, search index).${NC}"
       read -rp "Are you sure? (y/N): " confirm
       if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v 2>/dev/null || true
+        POSTGRES_PASSWORD=x REDIS_PASSWORD=x MEILI_MASTER_KEY=x GRAFANA_PASSWORD=x \
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
         rm -f .installed
         echo -e "${GREEN}All services stopped and volumes removed.${NC}"
       fi
@@ -125,13 +129,15 @@ fi
 if [ -f .env ]; then
   echo -e "  ${GREEN}.env already exists, keeping existing config${NC}"
 else
-  # Generate secure random values
+  # Generate secure random values. Passwords use hex (not base64) because
+  # they are embedded in DATABASE_URL/REDIS_URL, where '/', '+', '=' would
+  # break URL parsing.
   JWT_SECRET=$(openssl rand -base64 48 2>/dev/null || head -c 64 /dev/urandom | base64 | tr -d '\n' | head -c 64)
   ENCRYPTION_KEY=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | tr -d '\n' | head -c 64)
-  POSTGRES_PASSWORD=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 24)
-  REDIS_PASSWORD=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 24)
-  MEILI_MASTER_KEY=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -d '\n/+=' | head -c 24)
-  GRAFANA_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -d '\n/+=' | head -c 16)
+  POSTGRES_PASSWORD=$(openssl rand -hex 18 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  REDIS_PASSWORD=$(openssl rand -hex 18 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  MEILI_MASTER_KEY=$(openssl rand -hex 18 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  GRAFANA_PASSWORD=$(openssl rand -hex 12 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)
 
   if [ "$MODE" = "dev" ]; then
     NODE_ENV_VALUE="development"

@@ -19,9 +19,10 @@ export async function isRateLimited(key: string, options: RateLimitOptions): Pro
   try {
     const fullKey = `rl:${key}`;
     const count = await redis.incr(fullKey);
-    if (count === 1) {
-      await redis.expire(fullKey, options.windowSec);
-    }
+    // NX: only set a TTL when none exists yet. Doing this on every call (not
+    // just count === 1) heals keys whose initial EXPIRE was lost, which
+    // would otherwise rate-limit forever.
+    await redis.expire(fullKey, options.windowSec, 'NX');
     return count > options.max;
   } catch (error) {
     console.error('Rate limiter unavailable:', error);
@@ -64,9 +65,7 @@ export async function recordMfaFailure(userId: string): Promise<void> {
   try {
     const key = `mfa:fail:${userId}`;
     const failures = await redis.incr(key);
-    if (failures === 1) {
-      await redis.expire(key, MFA_LOCK_SEC);
-    }
+    await redis.expire(key, MFA_LOCK_SEC, 'NX');
     if (failures >= MFA_MAX_FAILURES) {
       await redis.set(`mfa:lock:${userId}`, '1', 'EX', MFA_LOCK_SEC);
     }
@@ -83,6 +82,11 @@ export async function clearMfaFailures(userId: string): Promise<void> {
   }
 }
 
+/**
+ * NOTE: x-forwarded-for is client-controlled unless a trusted proxy strips
+ * or overwrites it, so IP-keyed limits are best-effort. Identity-keyed
+ * limits (per email / per user) are the ones that must hold.
+ */
 export function clientIp(request: Request): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 }

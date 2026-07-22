@@ -19,6 +19,21 @@ async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+// Single-flight: concurrent 401s (multiple components/tabs racing after the
+// access token expires) must share ONE refresh call — parallel refreshes
+// with the same rotating token would trip server-side reuse detection.
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= fetch('/api/auth/refresh', { method: 'POST' })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
 /**
  * Fetch wrapper for the app's own API. Auth travels in httpOnly cookies, so
  * no token handling is needed here; on a 401 it attempts a single silent
@@ -28,8 +43,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   let res = await rawFetch(path, init);
 
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
-    const refreshed = await fetch('/api/auth/refresh', { method: 'POST' });
-    if (refreshed.ok) {
+    if (await refreshSession()) {
       res = await rawFetch(path, init);
     } else {
       window.location.assign('/login');

@@ -4,6 +4,13 @@ import { generateRefreshToken } from './jwt';
 
 const REFRESH_EXPIRY_DAYS = 7;
 
+/**
+ * A rotated-out token presented again within this window is treated as a
+ * benign race (two tabs refreshing at once), not theft. Only reuse AFTER
+ * the window revokes the user's sessions.
+ */
+const REUSE_GRACE_MS = 10 * 1000;
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -42,10 +49,13 @@ export async function validateSession(refreshToken: string): Promise<{
 
   if (!session) return null;
 
-  // A rotated-out token being presented again means it was stolen (or the
-  // legitimate client fell out of sync); revoke everything for this user.
+  // A rotated-out token being presented again long after rotation means it
+  // was stolen (or the client fell far out of sync); revoke everything for
+  // this user. Within the grace window it's just concurrent tabs racing.
   if (session.revokedAt) {
-    await revokeAllUserSessions(session.userId);
+    if (Date.now() - session.revokedAt.getTime() > REUSE_GRACE_MS) {
+      await revokeAllUserSessions(session.userId);
+    }
     return null;
   }
 
@@ -69,13 +79,17 @@ export async function rotateSession(params: {
   const expiresAt = new Date(Date.now() + REFRESH_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   // Mark old and create new atomically; the old row is kept (until expiry
-  // cleanup) so presenting it again can be detected as reuse.
-  await prisma.$transaction([
-    prisma.session.update({
-      where: { id: validated.sessionId },
+  // cleanup) so presenting it again can be detected as reuse. The guarded
+  // updateMany serializes concurrent rotations of the same token: only the
+  // request that flips revokedAt gets a new session, later ones get null.
+  const rotated = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.session.updateMany({
+      where: { id: validated.sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
-    }),
-    prisma.session.create({
+    });
+    if (claimed.count === 0) return false;
+
+    await tx.session.create({
       data: {
         userId: validated.userId,
         refreshToken: hashToken(refreshToken),
@@ -83,8 +97,11 @@ export async function rotateSession(params: {
         ipAddress: params.ipAddress,
         expiresAt,
       },
-    }),
-  ]);
+    });
+    return true;
+  });
+
+  if (!rotated) return null;
 
   return { refreshToken, expiresAt, userId: validated.userId };
 }
