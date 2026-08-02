@@ -5,6 +5,7 @@ import { apiFetch, ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { AiProviderSettings } from '@/components/settings/ai-providers';
+import { ActiveSessions } from '@/components/settings/active-sessions';
 
 const inputClasses =
   'mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50';
@@ -244,12 +245,7 @@ export default function SettingsPage() {
                 </form>
               )}
             </div>
-            <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Active Sessions</h3>
-              <p className="mt-2 text-sm text-zinc-500">
-                View and manage your active login sessions.
-              </p>
-            </div>
+            <ActiveSessions />
           </div>
         )}
       </div>

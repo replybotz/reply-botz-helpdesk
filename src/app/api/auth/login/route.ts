@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       tenantId: user.tenantId,
       role: user.role,
       email: user.email,
+      mustChangePassword: user.mustChangePassword,
     });
 
     // Update last login

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { prisma } from '@/lib/db';
 import { queueConnection } from './connection';
-import { AI_QUEUE_NAME, type AiJob } from './ai-queue';
+import { AI_QUEUE_NAME, scheduleMaintenance, type AiJob } from './ai-queue';
 import { processAiJob, recordJobFailure } from './handlers';
 
 const CONCURRENCY = Number(process.env.AI_WORKER_CONCURRENCY ?? 4);
@@ -23,8 +23,10 @@ worker.on('failed', async (job, error) => {
   // transient provider error doesn't show the agent a dead end.
   const attemptsMade = job?.attemptsMade ?? 0;
   const maxAttempts = job?.opts.attempts ?? 1;
-  if (job?.data.suggestionId && attemptsMade >= maxAttempts) {
-    await recordJobFailure(job.data.suggestionId, error.message);
+  const suggestionId =
+    job?.data && 'suggestionId' in job.data ? job.data.suggestionId : undefined;
+  if (suggestionId && attemptsMade >= maxAttempts) {
+    await recordJobFailure(suggestionId, error.message);
   }
 });
 
@@ -37,5 +39,9 @@ async function shutdown(signal: string) {
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
+
+scheduleMaintenance().catch((error) => {
+  console.error('[ai-worker] could not schedule maintenance jobs:', error);
+});
 
 console.warn(`[ai-worker] listening on "${AI_QUEUE_NAME}" (concurrency ${CONCURRENCY})`);

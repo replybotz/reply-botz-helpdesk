@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     // Fetch user for token payload
     const user = await prisma.user.findUnique({
       where: { id: result.userId },
-      select: { id: true, tenantId: true, role: true, email: true },
+      select: { id: true, tenantId: true, role: true, email: true, mustChangePassword: true },
     });
 
     if (!user) {
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       tenantId: user.tenantId,
       role: user.role,
       email: user.email,
+      mustChangePassword: user.mustChangePassword,
     });
 
     const response = Response.json({ expiresAt: result.expiresAt });

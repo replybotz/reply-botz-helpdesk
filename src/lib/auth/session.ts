@@ -115,3 +115,41 @@ export async function revokeSession(sessionId: string): Promise<void> {
 export async function revokeAllUserSessions(userId: string): Promise<void> {
   await prisma.session.deleteMany({ where: { userId } });
 }
+
+/** Sessions a user can see and revoke. Token hashes are never exposed. */
+export async function listUserSessions(userId: string) {
+  return prisma.session.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    select: {
+      id: true,
+      userAgent: true,
+      ipAddress: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+/** Revoke one session belonging to this user. Returns false if it isn't theirs. */
+export async function revokeUserSession(userId: string, sessionId: string): Promise<boolean> {
+  const { count } = await prisma.session.updateMany({
+    where: { id: sessionId, userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  return count > 0;
+}
+
+/**
+ * Rotation deliberately keeps revoked rows so a replayed token is detectable,
+ * and expired rows are only deleted lazily on presentation — so without this
+ * the table grows without bound. Expired rows are useless (validateSession
+ * rejects them on age alone); revoked-but-unexpired rows are kept, because
+ * that is exactly the window reuse detection needs.
+ */
+export async function purgeStaleSessions(): Promise<number> {
+  const { count } = await prisma.session.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+  return count;
+}

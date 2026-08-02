@@ -30,6 +30,9 @@ async function main() {
   // Create super admin user
   const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@replybotz.com';
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@123456';
+  // When no password was supplied the account ships with a publicly known
+  // credential, so force a change at first sign-in.
+  const usingDefaultPassword = !process.env.SEED_ADMIN_PASSWORD;
   const passwordHash = await argon2.hash(adminPassword, {
     type: argon2.argon2id,
     memoryCost: 65536,
@@ -47,13 +50,16 @@ async function main() {
       displayName: 'Super Admin',
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
+      mustChangePassword: usingDefaultPassword,
       emailVerifiedAt: new Date(),
     },
   });
 
   console.warn(`Super admin created/found: ${admin.id} (${admin.email})`);
-  if (!process.env.SEED_ADMIN_PASSWORD) {
-    console.warn('Using the default admin password (Admin@123456) — CHANGE THIS IMMEDIATELY');
+  if (usingDefaultPassword) {
+    console.warn(
+      'Using the default admin password (Admin@123456) — a password change is required at first sign-in.',
+    );
   }
 
   // Create a demo tenant
@@ -81,6 +87,7 @@ async function main() {
       displayName: 'Demo Admin',
       role: 'TENANT_ADMIN',
       status: 'ACTIVE',
+      mustChangePassword: usingDefaultPassword,
       emailVerifiedAt: new Date(),
     },
   });

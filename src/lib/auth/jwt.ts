@@ -6,6 +6,8 @@ export interface TokenPayload extends JWTPayload {
   tenantId: string;
   role: string;
   email: string;
+  /** Carried in the token so the proxy can gate every route without a DB read. */
+  mustChangePassword?: boolean;
 }
 
 export interface MfaTokenPayload extends JWTPayload {
@@ -29,12 +31,14 @@ export async function signAccessToken(payload: {
   tenantId: string;
   role: string;
   email: string;
+  mustChangePassword?: boolean;
 }): Promise<string> {
   return new SignJWT({
     sub: payload.userId,
     tenantId: payload.tenantId,
     role: payload.role,
     email: payload.email,
+    ...(payload.mustChangePassword ? { mustChangePassword: true } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

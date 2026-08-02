@@ -95,6 +95,19 @@ export async function proxy(request: NextRequest) {
       requestHeaders.set('x-mfa-pending', '1');
     }
 
+    // An account still on a known/default credential is confined to the
+    // change-password flow (plus logout) until it picks a new one.
+    if (
+      (payload as Record<string, unknown>).mustChangePassword &&
+      !pathname.startsWith('/change-password') &&
+      !pathname.startsWith('/api/auth/change-password')
+    ) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Password change required' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/change-password', request.url));
+    }
+
     requestHeaders.set('x-user-id', payload.sub as string);
     requestHeaders.set('x-user-role', (payload as Record<string, unknown>).role as string);
     requestHeaders.set('x-tenant-id', (payload as Record<string, unknown>).tenantId as string);

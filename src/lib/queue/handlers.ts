@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { draftReply } from '@/lib/ai/reply';
 import { triageTicket } from '@/lib/ai/triage';
 import { audit } from '@/lib/audit';
+import { purgeStaleSessions } from '@/lib/auth/session';
 import type { AiJob } from './ai-queue';
 
 export async function handleDraftReply(
@@ -68,12 +69,19 @@ export async function handleTriageTicket(
   }
 }
 
+export async function handlePurgeSessions(): Promise<void> {
+  const removed = await purgeStaleSessions();
+  if (removed > 0) console.warn(`[ai-worker] purged ${removed} expired session(s)`);
+}
+
 export async function processAiJob(job: AiJob): Promise<void> {
   switch (job.type) {
     case 'draft-reply':
       return handleDraftReply(job);
     case 'triage-ticket':
       return handleTriageTicket(job);
+    case 'purge-sessions':
+      return handlePurgeSessions();
   }
 }
 
