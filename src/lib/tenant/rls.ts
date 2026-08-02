@@ -13,6 +13,7 @@ const TENANT_SCOPED_MODELS = [
   'Ticket',
   'KnowledgeBaseArticle',
   'AiConfiguration',
+  'AiSuggestion',
   'Integration',
   'AuditLog',
 ];

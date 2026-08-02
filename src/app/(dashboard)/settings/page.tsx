@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import { AiProviderSettings } from '@/components/settings/ai-providers';
 
 const inputClasses =
   'mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50';
@@ -174,27 +175,8 @@ export default function SettingsPage() {
         )}
 
         {activeTab === 'ai' && (
-          <div
-            id="panel-ai"
-            role="tabpanel"
-            aria-labelledby="tab-ai"
-            className="max-w-lg rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">AI Configuration</h3>
-            <p className="mt-2 text-sm text-zinc-500">
-              Configure AI providers and models for automated responses and suggestions.
-            </p>
-            <div className="mt-4 space-y-3">
-              {['OpenAI', 'Anthropic', 'Google AI'].map((provider) => (
-                <div
-                  key={provider}
-                  className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"
-                >
-                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{provider}</span>
-                  <span className="text-xs text-zinc-500">Not configured</span>
-                </div>
-              ))}
-            </div>
+          <div id="panel-ai" role="tabpanel" aria-labelledby="tab-ai">
+            <AiProviderSettings />
           </div>
         )}
 

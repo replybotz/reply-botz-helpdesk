@@ -64,6 +64,17 @@ enum MessageRole {
   SYSTEM
 }
 
+enum AiSuggestionKind {
+  REPLY
+  TRIAGE
+}
+
+enum AiSuggestionStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 enum TicketStatus {
   OPEN
   IN_PROGRESS
@@ -110,6 +121,7 @@ model Tenant {
   tickets          Ticket[]
   articles         KnowledgeBaseArticle[]
   aiConfigurations AiConfiguration[]
+  aiSuggestions    AiSuggestion[]
   integrations     Integration[]
   auditLogs        AuditLog[]
 
@@ -264,6 +276,33 @@ model AiConfiguration {
 
   @@index([tenantId])
   @@map("ai_configurations")
+}
+
+/// Result of an asynchronous AI job (drafted reply, ticket triage). Rows are
+/// created PENDING by the API and completed by the queue worker.
+model AiSuggestion {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  kind           AiSuggestionKind
+  status         AiSuggestionStatus @default(PENDING)
+  conversationId String?            @map("conversation_id") @db.Uuid
+  ticketId       String?            @map("ticket_id") @db.Uuid
+  /// Drafted reply text (REPLY jobs).
+  content        String?            @db.Text
+  /// Structured result (TRIAGE jobs) and grounding metadata.
+  data           Json               @default("{}")
+  error          String?            @db.Text
+  model          String?            @db.VarChar(100)
+  requestedBy    String?            @map("requested_by") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, conversationId, createdAt])
+  @@index([tenantId, ticketId, createdAt])
+  @@map("ai_suggestions")
 }
 
 model Integration {

@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx src/lib/queue/worker.ts",
+    "worker:dev": "tsx watch src/lib/queue/worker.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
@@ -15,6 +17,7 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@radix-ui/react-slot": "^1.2.4",
@@ -26,6 +29,7 @@
     "ioredis": "^5.10.1",
     "jose": "^6.2.2",
     "next": "16.2.0",
+    "openai": "^7.3.0",
     "otpauth": "^9.5.0",
     "pg": "^8.20.0",
     "qrcode": "^1.5.4",

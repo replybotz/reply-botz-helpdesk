@@ -22,6 +22,24 @@ services:
       - replybotz
     restart: unless-stopped
 
+  # AI job worker (drafted replies, ticket triage). Runs from the builder
+  # image because it needs tsx and the full dependency tree.
+  ai-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    env_file: .env
+    command: npx tsx src/lib/queue/worker.ts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - replybotz
+    restart: unless-stopped
+
   # One-shot migration/seed runner. The builder image carries the Prisma CLI
   # and tsx, which the standalone production image deliberately does not.
   # Usage: docker compose run --rm migrate

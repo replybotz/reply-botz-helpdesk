@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useApi } from '@/lib/api/use-api';
@@ -8,6 +8,18 @@ import { apiFetch, ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { MESSAGE_ROLE_COLORS } from '@/lib/constants/status';
+
+interface AiSuggestion {
+  id: string;
+  status: 'PENDING' | 'READY' | 'FAILED';
+  content: string | null;
+  error: string | null;
+  model: string | null;
+  data: { citations?: { id: string; title: string; slug: string }[] } | null;
+}
+
+/** How often to check whether the worker has finished a queued draft. */
+const DRAFT_POLL_MS = 2000;
 
 interface Message {
   id: string;
@@ -38,6 +50,54 @@ export default function ConversationDetailPage() {
   const [newMessage, setNewMessage] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+
+  const [draft, setDraft] = useState<AiSuggestion | null>(null);
+  const [draftError, setDraftError] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pollDraft = useCallback(async () => {
+    try {
+      const { suggestion } = await apiFetch<{ suggestion: AiSuggestion | null }>(
+        `/api/conversations/${conversationId}/suggest-reply`,
+      );
+      setDraft(suggestion);
+      if (suggestion?.status === 'PENDING') {
+        pollTimer.current = setTimeout(pollDraft, DRAFT_POLL_MS);
+      } else {
+        setDrafting(false);
+        if (suggestion?.status === 'FAILED') {
+          setDraftError(suggestion.error || 'The AI worker could not draft a reply');
+        }
+      }
+    } catch (err) {
+      setDrafting(false);
+      setDraftError(err instanceof ApiError ? err.message : 'Network error');
+    }
+  }, [conversationId]);
+
+  // Stop polling when the page unmounts mid-generation.
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+  }, []);
+
+  async function handleDraft() {
+    setDraftError('');
+    setDrafting(true);
+    try {
+      const suggestion = await apiFetch<AiSuggestion>(
+        `/api/conversations/${conversationId}/suggest-reply`,
+        { method: 'POST' },
+      );
+      setDraft(suggestion);
+      pollTimer.current = setTimeout(pollDraft, DRAFT_POLL_MS);
+    } catch (err) {
+      setDrafting(false);
+      setDraftError(err instanceof ApiError ? err.message : 'Network error');
+    }
+  }
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +171,61 @@ export default function ConversationDetailPage() {
           {error}
         </Alert>
       )}
+
+      <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">AI draft reply</h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Grounded in your published knowledge base. Review before sending.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleDraft} disabled={drafting}>
+            {drafting ? 'Drafting…' : 'Draft reply'}
+          </Button>
+        </div>
+
+        {draftError && (
+          <Alert tone="error" className="mt-3">
+            {draftError}
+          </Alert>
+        )}
+
+        {drafting && !draftError && (
+          <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            Generating a draft — this runs in the background and can take a moment.
+          </p>
+        )}
+
+        {draft?.status === 'READY' && draft.content && (
+          <div className="mt-3">
+            <p className="whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 text-sm text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50">
+              {draft.content}
+            </p>
+            {draft.data?.citations && draft.data.citations.length > 0 && (
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Sources:{' '}
+                {draft.data.citations.map((citation, index) => (
+                  <span key={citation.id}>
+                    {index > 0 && ', '}
+                    <Link href={`/kb/${citation.id}`} className="hover:underline">
+                      {citation.title}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            <div className="mt-3 flex items-center gap-3">
+              <Button size="sm" onClick={() => setNewMessage(draft.content ?? '')}>
+                Use this draft
+              </Button>
+              {draft.model && (
+                <span className="text-xs text-zinc-400">Generated by {draft.model}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <form onSubmit={handleSend} className="mt-4 flex gap-3">
         <label htmlFor="message-input" className="sr-only">

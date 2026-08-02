@@ -5,13 +5,19 @@ import { Permission } from '@/lib/rbac/permissions';
 import { audit } from '@/lib/audit';
 import { encrypt } from '@/lib/encryption';
 import { errorResponse, ValidationError } from '@/lib/errors';
+import { PROVIDERS, PROVIDER_IDS, isProviderId } from '@/lib/ai/providers';
 import { z } from 'zod';
 
 const createAiConfigSchema = z.object({
-  provider: z.string().min(1).max(50),
-  model: z.string().min(1).max(100),
-  apiKey: z.string().min(1),
-  settings: z.record(z.string(), z.unknown()).optional(),
+  provider: z.enum(PROVIDER_IDS as [string, ...string[]]),
+  // Optional: falls back to the provider's default model.
+  model: z.string().max(100).optional(),
+  // Optional: providers such as Ollama need no credential.
+  apiKey: z.string().optional(),
+  settings: z
+    .object({ baseUrl: z.string().url().optional() })
+    .partial()
+    .optional(),
 });
 
 export const GET = withPermission(
@@ -53,15 +59,40 @@ export const POST = withPermission(
         );
       }
 
+      const { provider, settings } = parsed.data;
+      if (!isProviderId(provider)) {
+        throw new ValidationError('Validation failed', { provider: ['Unsupported provider'] });
+      }
+      const definition = PROVIDERS[provider];
+
+      if (definition.requiresApiKey && !parsed.data.apiKey) {
+        throw new ValidationError('Validation failed', {
+          apiKey: [`${definition.label} requires an API key`],
+        });
+      }
+      if (definition.requiresBaseUrl && !settings?.baseUrl) {
+        throw new ValidationError('Validation failed', {
+          baseUrl: [`${definition.label} requires a base URL`],
+        });
+      }
+
+      const model = parsed.data.model?.trim() || definition.defaultModel;
+      if (!model) {
+        throw new ValidationError('Validation failed', {
+          model: [`${definition.label} requires a model name`],
+        });
+      }
+
       const db = prisma.$extends(withTenantScope(ctx.tenantId));
 
       const config = await db.aiConfiguration.create({
         data: {
           tenantId: ctx.tenantId,
-          provider: parsed.data.provider,
-          model: parsed.data.model,
-          apiKey: encrypt(parsed.data.apiKey),
-          settings: parsed.data.settings,
+          provider,
+          model,
+          // Keyless providers store an empty (still encrypted) credential.
+          apiKey: parsed.data.apiKey ? encrypt(parsed.data.apiKey) : '',
+          settings: settings ?? {},
         },
         select: {
           id: true,
