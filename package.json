@@ -13,7 +13,7 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
+    "db:migrate": "sh scripts/db-migrate.sh",
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

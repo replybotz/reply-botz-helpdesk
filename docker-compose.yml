@@ -49,7 +49,7 @@ services:
       dockerfile: Dockerfile
       target: builder
     env_file: .env
-    command: sh -c "npx prisma migrate deploy || npx prisma db push; npx tsx prisma/seed.ts"
+    command: sh -c "sh scripts/db-migrate.sh && npx tsx prisma/seed.ts"
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,7 +1,15 @@
 import { PrismaClient } from '../src/generated/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
 import argon2 from 'argon2';
 
-const prisma = new PrismaClient();
+// Prisma 7 requires an explicit driver adapter — a bare `new PrismaClient()`
+// throws at construction.
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required to seed the database');
+}
+
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
 async function main() {
   // Create system tenant

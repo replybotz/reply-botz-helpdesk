@@ -40,7 +40,7 @@ export interface DraftedReply {
  * the stack is not yet wired to an index; when it is, replace this with a
  * relevance query and keep the same return shape.
  */
-function selectRelevantArticles<T extends { title: string; content: string; tags: string[] }>(
+export function selectRelevantArticles<T extends { title: string; content: string; tags: string[] }>(
   articles: T[],
   query: string,
 ): T[] {
